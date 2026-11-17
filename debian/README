@@ -1,0 +1,102 @@
+Packaging source for `scripts/build-deb.sh`. Notes that don't belong in
+`control.in` itself (Debian control files don't support `#` comments —
+caught by a real `dpkg-deb` parse failure while building this).
+
+- `Depends:` package names in `control.in` were verified against the
+  reference VM (Ubuntu 24.04 noble) via `dpkg -l` — several carry the
+  noble 64-bit-time-transition "t64" suffix (e.g. `libgtk-3-0t64`).
+  Hand-written, not derived via `dpkg-shlibdeps`/`dh_shlibdeps` — this
+  package is built directly with `dpkg-deb`, not full debhelper. A real
+  public release should verify this list with proper shlibdeps tooling
+  rather than trusting this by-hand list indefinitely.
+  Release review (2026-11-17): the list originally covered only the C
+  libraries and missed every GObject-Introspection typelib package the
+  GJS code imports (`gir1.2-webkit2-4.1`, `gir1.2-gtk-3.0`, ...). The
+  bug was hidden because every test machine also had `gnome-sushi`,
+  which depends on them. `tests/test-deb-depends.sh` now derives the
+  imported GI namespaces from `src/` and fails if any owning package is
+  missing from `Depends:` (LibreOffice's optional `LOKDocView` is in
+  `Suggests:`).
+
+- **Two-pass build, not one — a real `dpkg -i` collision caught this,
+  not something assumed up front.** A first attempt built everything
+  with a single `meson setup --prefix=/usr` pass, matching how a normal
+  system package would be built. `dpkg -i` refused it outright:
+  `trying to overwrite '/usr/bin/sushi', which is also in package
+  gnome-sushi 46.0-1`. Diffing our package's file list against
+  `dpkg -L gnome-sushi` (`comm -12`, see `build-deb.sh`'s own comments)
+  found the full list: `/usr/bin/sushi`, the previewer binary itself
+  (`/usr/libexec/org.gnome.NautilusPreviewer`), its private libs
+  (`libsushi-1.0.so`, its typelib, its `.gir`), both compiled
+  gresources, the gtksourceview style, and the appdata.xml — all of
+  these live at the *exact same paths* the real system `gnome-sushi`
+  package uses, by design (that's what lets the previewer act as a
+  drop-in D-Bus-activated replacement) — but that design assumption
+  only worked so far because every previous install in this project was
+  per-user (`$HOME/.local`, a different prefix entirely from the
+  system's `/usr`), never a true system-wide `/usr` install where the
+  paths become byte-identical to the real package's own files.
+
+  Fix: the previewer (binary + everything private to it) now builds in
+  its own pass with `--prefix=/opt/kaiten/previewer` — a private,
+  package-owned location that shares no paths with `gnome-sushi` at
+  all, so no `Conflicts:`/`Replaces:` is needed (which would have meant
+  effectively replacing the system package, violating Part I's "don't
+  modify/replace system Sushi" goal). This tree needs no per-user copy
+  either — it's read-only shared code, not user data. A separate pass
+  with `--prefix=/usr` builds the thumbnailer and the shared `web/`
+  assets (which genuinely must be under `/usr` specifically — SPEC-010's
+  bwrap-sandbox finding) plus the MIME override; none of those collide
+  with anything, their names are unique to this fork.
+
+- **Only the D-Bus service file needs per-user handling — not the
+  `.thumbnailer` registration too.** An earlier version of this design
+  treated both symmetrically "for consistency," but the `.thumbnailer`
+  file's name (`kaiten-model.thumbnailer`) is unique to this fork
+  and was never actually forced off `/usr` by anything — only the D-Bus
+  service file collides (upstream Sushi ships one with the identical
+  filename). Simplified once that became clear: the thumbnailer and its
+  registration are fully system-wide, active immediately after
+  `apt install`, no login-wait needed. Only the previewer's spacebar
+  activation needs the next-login step.
+
+- Activation model (SPEC-011, user-approved): `kaiten-activate.service`
+  (a systemd --user unit, auto-enabled via a
+  `graphical-session.target.wants` symlink — same convention
+  `update-notifier` uses on this reference machine) runs
+  `kaiten-activate-user` on every graphical login to reconcile that
+  one D-Bus service file against a template staged at
+  `/usr/share/kaiten/activation-templates/`.
+
+- `kaiten-activate-user` is a *reconciliation*, not a one-shot
+  install action: it activates when the template exists (package
+  installed) and cleans up when it doesn't (package removed) — this is
+  what makes removal correct even for a user who wasn't logged in when
+  `apt remove` ran (they get cleaned up on their next login instead).
+
+- **Second, independent sandbox finding — no display server access at
+  all.** After fixing the `/usr`-path collision above, the first real
+  `apt install` + Nautilus grid-view test still showed no thumbnails.
+  `strace -f` on the real Nautilus-triggered invocation traced through
+  to the actual sandboxed child process and found `Gtk-WARNING: cannot
+  open display: :0` — the bwrap sandbox provides no X11/Wayland socket
+  at all (confirmed from its own invocation args: no `.X11-unix` bind,
+  `/tmp` replaced with an isolated dir holding only the one input
+  file). This is unrelated to the `/usr`-path constraint SPEC-010 found
+  — a second, independent constraint on top of it, only visible once
+  the first one was fixed and the binary could actually be reached.
+  Fix (`src/kaiten-thumbnailer.in`'s `_startPrivateXServer()`):
+  spawn a private, throwaway Xvfb inside the same sandboxed process
+  tree before `Gtk.init()` — fully self-contained, no host display
+  server needed in any context. Always spawned unconditionally, not
+  conditional on an already-set `DISPLAY`, since a set-but-dead
+  `DISPLAY` (what the sandbox actually inherits) is indistinguishable
+  from a working one without attempting the same connection `Gtk.init()`
+  itself would make. New runtime dependency: `xvfb`.
+
+- `debian/prerm` additionally removes the same known file directly, for
+  any user who *is* currently logged in at removal time — see its own
+  header comment for why this is a materially safer operation than the
+  "root writes new content into ~/.local" case the activation-model
+  decision was actually about (this only ever deletes a file the
+  package's own script created).

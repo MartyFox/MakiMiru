@@ -1,0 +1,92 @@
+#!/bin/sh
+# Kaiten per-user activation, run automatically by the
+# kaiten-activate.service systemd --user unit on every graphical
+# login — deliberately a self-healing reconciliation, not a one-shot
+# install action: if the package is installed (the template file under
+# /usr/share/kaiten/activation-templates/ exists), this copies it
+# into this user's own ~/.local — the D-Bus previewer registration —
+# and refreshes the D-Bus config cache.
+#
+# SPEC-012 correction (external review, High, caught a real bug in the
+# reasoning here): this script used to also claim to clean up a stale
+# registration on *removal*, for users who weren't logged in when
+# `apt remove` ran, "on their next login." That claim was wrong — this
+# script and the systemd --user unit that triggers it are THEMSELVES
+# package files, removed by dpkg as part of the same removal
+# transaction that runs debian/prerm. There is no "next login" for this
+# script to run at after removal — it's gone by then, for every user,
+# not just inactive ones. debian/prerm is now the sole removal-cleanup
+# mechanism, and covers every local user with the file present, not
+# only ones with an active session — see prerm's own header comment.
+# The removal branch below is kept only as defense-in-depth for the
+# narrow case where this runs while the package is still nominally
+# installed but its own template is separately missing (e.g. a
+# corrupted/partial state) — it is not a real removal-completion path
+# for the general "package fully removed" case.
+#
+# Only the D-Bus service file needs this treatment — it's the one thing
+# that must stay per-user (a system-wide copy would collide with the
+# real gnome-sushi package's own file of the same name). Everything
+# else this fork ships (thumbnailer, its .thumbnailer registration, the
+# MIME override, the previewer's own binary/libs under
+# /opt/kaiten/previewer) installs plainly system-wide with the
+# package — no per-user step, active immediately after `apt install`.
+#
+# Runs unprivileged, as the logged-in user — this is precisely why
+# activation isn't done by a root postinst writing into ~/.local
+# directly (SPEC-011 activation-model decision).
+set -eu
+
+TEMPLATE=/usr/share/kaiten/activation-templates/org.gnome.NautilusPreviewer.service
+DBUS_SERVICE="$HOME/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service"
+MARKER="X-Kaiten-Managed=true"
+
+log() {
+    # Captured by `journalctl --user -u kaiten-activate.service` —
+    # the transparency channel for this background-triggered half of
+    # install/remove (debian/postinst and debian/prerm cover the
+    # terminal-visible half, at `apt install`/`apt remove` time).
+    echo "kaiten-activate-user: $1"
+}
+
+reload_dbus() {
+    if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        dbus-send --session --type=method_call \
+            --dest=org.freedesktop.DBus / org.freedesktop.DBus.ReloadConfig \
+            >/dev/null 2>&1 || true
+    fi
+}
+
+# External review, Medium, real bug: this used to overwrite/remove
+# whatever existed at $DBUS_SERVICE unconditionally — clobbering a
+# user's own hand-placed previewer override with no warning. Fixed:
+# only ever touches a file that either doesn't exist yet, or already
+# carries our own marker — anything else (a real user override) is left
+# alone, loudly.
+is_ours_or_absent() {
+    [ ! -f "$DBUS_SERVICE" ] && return 0
+    grep -qxF "$MARKER" "$DBUS_SERVICE" 2>/dev/null
+}
+
+if [ -f "$TEMPLATE" ]; then
+    if is_ours_or_absent; then
+        log "Kaiten is installed — registering it as your 3D file previewer in ~/.local (delete $DBUS_SERVICE, or uninstall the package, to revert)."
+        mkdir -p "$(dirname "$DBUS_SERVICE")"
+        cp "$TEMPLATE" "$DBUS_SERVICE"
+        reload_dbus
+        log "Done — previewer active on next spacebar preview. (3D thumbnails were already active immediately after install — no per-user step needed for those.)"
+    else
+        log "WARNING: $DBUS_SERVICE already exists and isn't Kaiten-managed (no $MARKER marker) — leaving it alone, not registering as your previewer. Remove it yourself if you want Kaiten active."
+    fi
+else
+    if [ -f "$DBUS_SERVICE" ]; then
+        if grep -qxF "$MARKER" "$DBUS_SERVICE" 2>/dev/null; then
+            log "Kaiten's template is missing while still nominally installed — cleaning up your ~/.local previewer registration (defense-in-depth; normal removal is handled by debian/prerm, not this)."
+            rm -f "$DBUS_SERVICE"
+            reload_dbus
+            log "Done — the system default previewer is active again."
+        else
+            log "WARNING: $DBUS_SERVICE exists and isn't Kaiten-managed — leaving it alone."
+        fi
+    fi
+fi

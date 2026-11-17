@@ -1,0 +1,25 @@
+Vendored from three.js 0.185.1 (npm package `three`, MIT license — headers intact):
+
+- three.module.js, three.core.js       (build/)
+- addons/loaders/STLLoader.js          (examples/jsm/loaders/)
+- addons/loaders/3MFLoader.js          (examples/jsm/loaders/)
+- addons/loaders/OBJLoader.js          (examples/jsm/loaders/)
+- addons/controls/OrbitControls.js     (examples/jsm/controls/)
+- addons/libs/fflate.module.js         (examples/jsm/libs/)
+
+Note: three.module.js imports ./three.core.js — both must ship together.
+
+Licenses:
+- LICENSE-three.js — three.js MIT license (covers everything above except fflate).
+- LICENSE-fflate — fflate 0.8.2 (addons/libs/fflate.module.js, bundled by
+  three.js). Copied verbatim from https://github.com/101arrowz/fflate/blob/master/LICENSE
+  (verified 2026-11-17); upstream's copyright year rolls forward, holder is
+  Arjun Barrett.
+
+Known upstream behaviour (not our code): 3MFLoader.parse() calls fflate's
+unzipSync(), which inflates every archive member into memory at once. Our
+streaming preflight in web/main.js (preflight3mfDecompressedSize) rejects any
+archive that inflates past MAX_3MF_DECOMPRESSED_BYTES (500 MB) *before* that
+call, so it is bounded — but a legitimate 3MF just under the cap can still make
+3MFLoader hold up to ~500 MB in the WebKit web process for one preview or
+thumbnail. Lower the cap in web/main.js if that is too much for your machine.

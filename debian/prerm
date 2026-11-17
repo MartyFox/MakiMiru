@@ -1,0 +1,88 @@
+#!/bin/sh
+# SPEC-011/SPEC-012: visible, plain-language removal output, and
+# complete reversal for every local user — not just ones with an active
+# session (install must be fully reversible, and visibly so). Runs as
+# root, before package files are removed, during `apt remove`/`dpkg -r`.
+#
+# External review, High, real bug: an earlier version of this script
+# only cleaned up users with an active D-Bus session
+# (/run/user/*/bus), and relied on kaiten-activate-user's own
+# "reconcile on next login" logic to clean up everyone else. That
+# reasoning was broken: kaiten-activate-user and the systemd --user
+# unit that triggers it are THEMSELVES package files — dpkg removes
+# them as part of this same removal transaction, before any future
+# login can ever run them again. A user who is logged out at removal
+# time would have been left with a permanently dangling
+# ~/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service
+# pointing at a now-deleted /opt/kaiten/previewer binary, forever
+# (or until they noticed previewing silently stopped working and
+# manually deleted it) — there was no mechanism left that could ever
+# fix it for them. Fixed: this is now the ONLY removal-time cleanup
+# mechanism, and it covers every local user with a home directory that
+# actually has the file, not just active sessions. (kaiten-activate-
+# user's own removal branch is retained as defense-in-depth for the
+# narrow case where it runs while the package is still nominally
+# installed but its templates are somehow missing — it is not, and
+# cannot be, what makes removal correct for inactive users; see its own
+# header comment.)
+#
+# External review, Medium, real bug: an earlier version deleted
+# whatever file existed at that path unconditionally — clobbering a
+# user's own hand-edited previewer override, if they had one, with no
+# warning. Fixed: only ever deletes a file that carries the
+# X-Kaiten-Managed=true marker this project's own template writes
+# (data/org.gnome.NautilusPreviewer.service.in) — anything else is left
+# alone with a clear warning printed, never silently touched.
+set -e
+
+DBUS_SERVICE_REL=".local/share/dbus-1/services/org.gnome.NautilusPreviewer.service"
+MARKER="X-Kaiten-Managed=true"
+
+if [ "$1" = "remove" ]; then
+    echo "Kaiten: removing the 3D model previewer and thumbnailer."
+    echo "  - Reverting every local user's previewer registration to the system default now (not just currently logged-in ones)."
+    echo "  - 3D thumbnails stop immediately for everyone (they were system-wide, no per-user step)."
+
+    getent passwd | while IFS=: read -r user _ uid _ _ home _; do
+        [ -n "$home" ] && [ -d "$home" ] || continue
+        svc="$home/$DBUS_SERVICE_REL"
+
+        # Release review (2026-11-17): the check and the delete run as
+        # the user who owns the home directory, not as root. Everything
+        # under ~/.local is user-controlled; as root, a symlinked
+        # ~/.local/share/dbus-1/services could point grep/rm at a file
+        # the user could not otherwise touch. As the user, the worst a
+        # symlink can do is make them delete their own file.
+        # Exit codes: 0 removed, 2 not ours, 3 absent.
+        rc=0
+        KAITEN_SVC="$svc" KAITEN_MARKER="$MARKER" \
+            runuser -u "$user" -- sh -c '
+                [ -f "$KAITEN_SVC" ] || exit 3
+                grep -qxF "$KAITEN_MARKER" "$KAITEN_SVC" 2>/dev/null || exit 2
+                rm -f "$KAITEN_SVC"
+            ' 2>/dev/null || rc=$?
+
+        case "$rc" in
+            0) echo "  - removed $svc" ;;
+            2) echo "  - WARNING: $svc does not look like a Kaiten-managed file (no $MARKER marker) — leaving it alone. Remove it yourself if it's stale." >&2
+               continue ;;
+            3) continue ;;
+            *) echo "  - WARNING: could not check $svc as $user (exit $rc) — remove it yourself if it exists." >&2
+               continue ;;
+        esac
+
+        bus="/run/user/$uid/bus"
+        if [ -S "$bus" ]; then
+            # Active session: also nudge its D-Bus daemon to notice the
+            # removal immediately, not just on its next lookup.
+            KAITEN_BUS="$bus" HOME="$home" runuser --preserve-environment -u "$user" -- sh -c '
+                export DBUS_SESSION_BUS_ADDRESS="unix:path=$KAITEN_BUS"
+                dbus-send --session --type=method_call \
+                    --dest=org.freedesktop.DBus / org.freedesktop.DBus.ReloadConfig \
+                    >/dev/null 2>&1 || true
+            ' 2>/dev/null || true
+        fi
+    done
+fi
+
+exit 0

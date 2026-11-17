@@ -59,3 +59,19 @@ install_data(
   install_mode: 'rwxr-xr-x',
   install_dir: bindir,
 )
+
+# SPEC-010: standalone thumbnailer CLI, invoked by tumbler per the
+# freedesktop Thumbnail Managing Standard. Plain gjs script (not
+# gresource-compiled like the previewer's JS) — self-locates web/ assets
+# via the same imports.package.init() pkgdatadir mechanism.
+kaiten_thumbnailer_bin = configure_file(
+  input: 'kaiten-thumbnailer.in',
+  output: 'kaiten-thumbnailer',
+  configuration: conf,
+)
+
+install_data(
+  kaiten_thumbnailer_bin,
+  install_mode: 'rwxr-xr-x',
+  install_dir: libexecdir,
+)

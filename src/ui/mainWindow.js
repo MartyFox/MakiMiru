@@ -338,7 +338,7 @@ var MainWindow = GObject.registerClass(class MainWindow extends Gtk.ApplicationW
     }
 
     _createView(fileInfo) {
-        let klass = MimeHandler.getKlass(fileInfo.get_content_type());
+        let klass = MimeHandler.getKlass(fileInfo.get_content_type(), this.file);
         let renderer = new klass(this.file, fileInfo);
         this._embedRenderer(renderer);
 

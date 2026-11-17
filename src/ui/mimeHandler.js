@@ -39,7 +39,12 @@ for (let i in imports.viewers) {
     }
 }
 
-var getKlass = function(mime) {
+// file (optional, a Gio.File): SPEC-009's documented cross-distro MIME
+// fragility fallback. Only ever consulted for the exact 'text/plain'
+// case (see below) — omitting it (or omitting file) leaves every other
+// dispatch outcome, including FallbackRenderer cases like 0-byte files
+// resolving to application/x-zerosize, completely unchanged.
+var getKlass = function(mime, file) {
     let renderer = renderers.find((r) => {
         // first, try a direct match with the mimetype itself
         if (r.mimeTypes.includes(mime))
@@ -55,6 +60,22 @@ var getKlass = function(mime) {
                 return true;
             return false;
         });
+    }
+
+    // SPEC-009: narrow, targeted fallback for the one documented
+    // ambiguity risk — a host classifying a 3D model file as text/plain,
+    // which would otherwise silently hand it to Sushi's text viewer
+    // instead. Deliberately scoped to exactly mime === 'text/plain', not
+    // "any unmatched mime" — so it can never affect a case that already
+    // correctly resolves elsewhere (e.g. FallbackRenderer for 0-byte
+    // files, application/x-zerosize; must stay
+    // unchanged).
+    if (mime === 'text/plain' && file) {
+        let fallbackRenderer = renderers.find((r) =>
+            r.filenameFallback &&
+            r.filenameFallback.some((re) => re.test(file.get_basename())));
+        if (fallbackRenderer)
+            renderer = fallbackRenderer;
     }
 
     if (renderer)

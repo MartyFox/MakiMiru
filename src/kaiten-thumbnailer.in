@@ -1,0 +1,513 @@
+#!@GJS@
+
+/*
+ * Copyright (C) 2026 Kaiten contributors
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.
+ *
+ * SPEC-010: freedesktop Thumbnail Managing Standard CLI for
+ * STL/3MF/OBJ. Invoked by tumbler as `kaiten-thumbnailer INPUT
+ * OUTPUT SIZE`; writes a PNG to OUTPUT and exits 0, or exits non-zero
+ * and writes nothing on any failure. Renders via the same offscreen
+ * WebKit + web/main.js page (loaders, auto-framing, SPEC-008 preflight
+ * caps) as the previewer (src/viewers/model.js) — go/no-go on this
+ * approach was spiked and confirmed viable before this file was
+ * written.
+ *
+ * This runs unattended over every file tumbler finds in a watched
+ * folder — a strictly worse threat model than the previewer's
+ * one-file-the-user-opened case — so it applies the same
+ * SPEC-007 sandbox gating and relies on web/main.js's SPEC-008 preflight
+ * caps unchanged. The sandbox-gating logic below is a deliberate,
+ * documented duplicate of src/viewers/model.js's _shouldDisableSandbox()
+ * (see that file's own comment) rather than a shared import — this is a
+ * genuinely separate binary/GResource, not a GJS module the previewer
+ * loads, and duplicating ~15 self-contained lines was judged simpler and
+ * lower-risk than reaching into the previewer's private module
+ * internals or introducing a new shared-library target for one caller.
+ * tests/test-thumbnailer-sandbox-parity.sh statically checks the two
+ * copies stay structurally in sync.
+ */
+
+imports.package.init({
+    name: '@PACKAGE_NAME@',
+    version: '@PACKAGE_VERSION@',
+    prefix: '@prefix@',
+    libdir: '@libdir@',
+});
+
+imports.gi.versions.Gtk = '3.0';
+imports.gi.versions.WebKit2 = '4.1';
+const {Gtk, Gdk, GLib, WebKit2, Gio} = imports.gi;
+const System = imports.system;
+
+// Deliberately duplicated from src/viewers/model.js — see file header.
+// Must match that file's value; tests/test-thumbnailer-cli.sh's parity
+// check assumes they agree.
+const OVERSIZED_THRESHOLD_BYTES = 100 * 1024 * 1024;
+
+// New constant for this binary: an internal render budget, deliberately
+// conservative and independent of tumbler's own configured timeout (not
+// assumed/measured against a specific tumbler version here) — the goal
+// is simply "always fail on our own terms before anything external
+// kills us mid-write." Sized with headroom above the ~9s worst-case
+// observed for SPEC-008's zip-bomb fixture tripping its own decompressed-
+// byte cap on this VM's software rendering (measured during SPEC-010
+// manual testing) — a tighter budget just replaces that cap's clean
+// "too large for quick preview" message with a generic "timed out" one,
+// still safe either way, but a needlessly worse diagnostic. Override for
+// tests via env var.
+const DEFAULT_THUMBNAIL_TIMEOUT_MS = 12000;
+
+function _thumbnailTimeoutMs() {
+    let override = GLib.getenv('KAITEN_THUMBNAIL_TIMEOUT_MS');
+    let parsed = override ? parseInt(override, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_THUMBNAIL_TIMEOUT_MS;
+}
+
+const APPARMOR_USERNS_RESTRICT_PATH =
+    '/proc/sys/kernel/apparmor_restrict_unprivileged_userns';
+
+function _shouldDisableSandbox() {
+    let override = GLib.getenv('KAITEN_FORCE_SANDBOX');
+    if (override === '0')
+        return true;
+    if (override === '1')
+        return false;
+    try {
+        let [ok, contents] = GLib.file_get_contents(APPARMOR_USERNS_RESTRICT_PATH);
+        return ok && imports.byteArray.toString(contents).trim() === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
+function _formatForPath(path) {
+    let m = /\.([a-zA-Z0-9]+)$/.exec(path);
+    let ext = m ? m[1].toLowerCase() : '';
+    if (ext === '3mf')
+        return '3mf';
+    if (ext === 'obj')
+        return 'obj';
+    return 'stl';
+}
+
+function _assetMimeType(path) {
+    if (path.endsWith('.html'))
+        return 'text/html';
+    if (path.endsWith('.js'))
+        return 'text/javascript';
+    return 'application/octet-stream';
+}
+
+// SPEC-011 finding, discovered via a real `.deb`-installed test, not
+// assumed up front: GNOME's real thumbnail factory runs this binary
+// inside a bwrap sandbox with *no* display-server access at all — no
+// X11 socket bind-mount, no Wayland socket, /tmp replaced with an
+// isolated directory holding only the one input file. `strace` showed
+// Gtk.init() failing with "Gtk-WARNING: cannot open display: :0" —
+// unrelated to (and only found after fixing) the earlier /usr-path
+// finding from SPEC-010; this is a second, independent sandbox
+// constraint on top of that one. Fix: spawn a private, throwaway Xvfb
+// entirely within this same sandboxed process tree before Gtk.init() —
+// fully self-contained, no host display server needed in any context
+// (sandboxed or not). Always spawned, never conditional on an inherited
+// DISPLAY already looking set — a set-but-dead DISPLAY (exactly what
+// the sandbox actually hands us, inherited from the spawning process's
+// own environment) is indistinguishable from a working one without
+// already attempting the connection Gtk.init() itself would make, so
+// "detect and skip" would be equally fragile; unconditional is simpler
+// and provably correct in every context, at the cost of common up to
+// a couple hundred ms of Xvfb startup overhead even when a real
+// display was already available (e.g. this project's own test suite,
+// which passes a real DISPLAY=:0 for direct/manual invocation).
+//
+// Release review (2026-11-17), real bug: this used to pick a display
+// number from our PID, poll for the X11 socket file to appear, and stop
+// Xvfb with SIGKILL (force_exit). SIGKILL meant Xvfb never removed its
+// /tmp/.X11-unix/X<n> socket or /tmp/.X<n>-lock file. Inside GNOME's
+// bwrap thumbnail sandbox /tmp is private and thrown away, so that was
+// harmless there, but under tumbler on XFCE/MATE (no bwrap) or in our
+// own test suite every thumbnail leaked two files into the real /tmp
+// (observed: 10 per test run). Worse, the socket poll then passed
+// immediately for any PID-derived number whose stale socket was still
+// there, before the new Xvfb was listening, and the thumbnail failed.
+// Now: Xvfb chooses a free display itself and writes its number to
+// stdout (-displayfd 1) only once it accepts connections, and it is
+// stopped with SIGTERM so it cleans up after itself.
+
+// Iterates ctx (default: the default main context) until done() or the
+// deadline — used outside the real main loop, where we still need async
+// subprocess I/O to make progress.
+function _iterateUntil(done, timeoutMs, ctx = GLib.MainContext.default()) {
+    const deadline = GLib.get_monotonic_time() + timeoutMs * 1000;
+    while (!done() && GLib.get_monotonic_time() < deadline) {
+        if (!ctx.iteration(false))
+            GLib.usleep(10 * 1000);
+    }
+    return done();
+}
+
+function _startPrivateXServer() {
+    // Deliberately inherit stderr rather than silencing it — Xvfb
+    // rarely prints anything in normal operation, but when it does
+    // (or fails to start), that diagnostic was what this project used
+    // to actually root-cause the sandbox rendering issues below; worth
+    // keeping visible rather than swallowed. stdout is piped: it only
+    // carries the -displayfd readiness line.
+    const launcher = new Gio.SubprocessLauncher({
+        flags: Gio.SubprocessFlags.STDOUT_PIPE,
+    });
+    let proc;
+    try {
+        // Real bug, caught by an actual grid-thumbnail screenshot (not
+        // by any automated test — solid-black output, not a crash or
+        // error, so nothing here threw): a 64x64 screen produced
+        // thumbnails that "worked" (exit 0, correctly-sized PNG) but
+        // rendered as flat black, because the requested thumbnail size
+        // (up to 256, per the freedesktop spec's largest standard size)
+        // exceeds Xvfb's own root screen size — offscreen rendering
+        // larger than the X screen silently fails to composite instead
+        // of erroring. Sized well above any size this project asks for.
+        // -terminate: Xvfb exits by itself once its last client
+        // disconnects, so it can't be orphaned if tumbler (or anything
+        // else) kills us mid-render, before _stopPrivateXServer() runs.
+        proc = launcher.spawnv(['Xvfb', '-displayfd', '1', '-terminate',
+            '-screen', '0', '1024x1024x24', '-nolisten', 'tcp']);
+    } catch (e) {
+        printerr(`kaiten-thumbnailer: failed to spawn Xvfb: ${e}`);
+        return null;
+    }
+
+    const stdout = new Gio.DataInputStream({base_stream: proc.get_stdout_pipe()});
+    let displayNum = null;
+    let readDone = false;
+    stdout.read_line_async(GLib.PRIORITY_DEFAULT, null, (s, res) => {
+        try {
+            const [line] = s.read_line_finish_utf8(res);
+            if (line && /^\d+$/.test(line.trim()))
+                displayNum = line.trim();
+        } catch (e) {
+            printerr(`kaiten-thumbnailer: reading Xvfb display number failed: ${e}`);
+        }
+        readDone = true;
+    });
+
+    if (!_iterateUntil(() => readDone, 5000) || displayNum === null) {
+        printerr('kaiten-thumbnailer: Xvfb did not become ready in time');
+        proc.force_exit();
+        return null;
+    }
+
+    GLib.setenv('DISPLAY', `:${displayNum}`, true);
+    return proc;
+}
+
+// SIGTERM (not SIGKILL) so Xvfb removes its own socket and lock file;
+// SIGKILL only as a fallback if it hasn't exited within 2 s.
+//
+// The wait runs on a private main context, never the default one:
+// GTK's X connection lives on the default context, and once Xvfb exits
+// GDK treats the dropped connection as fatal and calls exit(1) — which
+// is exactly what happened when this first iterated the default context
+// (every sandboxed thumbnail "failed" after rendering successfully;
+// caught by test-deb-install.sh's real Nautilus run). Not dispatching
+// the default context means GDK never sees the hang-up before we exit.
+function _stopPrivateXServer(proc) {
+    const ctx = new GLib.MainContext();
+    let exited = false;
+    ctx.push_thread_default();
+    try {
+        proc.wait_async(null, () => {
+            exited = true;
+        });
+        proc.send_signal(15);
+    } catch (e) {
+        ctx.pop_thread_default();
+        return;
+    }
+    ctx.pop_thread_default();
+    if (!_iterateUntil(() => exited, 2000, ctx))
+        proc.force_exit();
+    _removeOwnX11Dir();
+}
+
+// Xvfb creates /tmp/.X11-unix for its socket but never removes the
+// directory itself. Inside GNOME's thumbnail sandbox /tmp is a fresh
+// per-thumbnail host directory (/tmp/gnome-desktop-thumbnailer-XXXXXX)
+// that gnome-desktop deletes afterwards — and refuses to delete when we
+// leave anything in it ("thumbnailer ... left files in directory"),
+// leaking one such directory into the real /tmp per thumbnail. Remove
+// it only when it's ours and empty: on a normal desktop /tmp/.X11-unix
+// is root-owned and shared, so the uid check leaves it alone, and
+// delete() refuses a non-empty directory anyway.
+function _removeOwnX11Dir() {
+    try {
+        const uidOf = (path, flags) => Gio.File.new_for_path(path)
+            .query_info('unix::uid', flags, null)
+            .get_attribute_uint32('unix::uid');
+        const dir = '/tmp/.X11-unix';
+        // /proc/self is a root-owned symlink: follow it to our own
+        // /proc/<pid>, which is owned by our uid.
+        const ourUid = uidOf('/proc/self', Gio.FileQueryInfoFlags.NONE);
+        if (uidOf(dir, Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS) === ourUid)
+            Gio.File.new_for_path(dir).delete(null);
+    } catch (e) { /* absent, not ours, or not empty — leave it */ }
+}
+
+function main() {
+    if (ARGV.length !== 3) {
+        printerr('usage: kaiten-thumbnailer INPUT OUTPUT SIZE');
+        System.exit(1);
+        return;
+    }
+    const [inputArg, outputPath, sizeArg] = ARGV;
+
+    // tumbler's Thumbnail Managing Standard entries can use either a
+    // local path (%i) or a URI (%u) depending on how the .thumbnailer
+    // Exec= line is written — accept either so this doesn't silently
+    // break if that convention differs across tumbler versions/distros.
+    const inputFile = inputArg.includes('://')
+        ? Gio.File.new_for_uri(inputArg)
+        : Gio.File.new_for_path(inputArg);
+
+    let size = parseInt(sizeArg, 10);
+    if (!Number.isFinite(size) || size <= 0)
+        size = 256;
+
+    let info;
+    try {
+        info = inputFile.query_info('standard::size', Gio.FileQueryInfoFlags.NONE, null);
+    } catch (e) {
+        printerr(`kaiten-thumbnailer: cannot stat input: ${e}`);
+        System.exit(1);
+        return;
+    }
+    // Same threshold as the previewer — checked here, before
+    // WebKit/Gtk are ever touched, exactly like model.js's synchronous
+    // precheck. Anything smaller still goes through web/main.js's
+    // SPEC-008 preflight caps once the page loads.
+    if (info.get_size() >= OVERSIZED_THRESHOLD_BYTES) {
+        printerr('kaiten-thumbnailer: file too large for a quick thumbnail');
+        System.exit(1);
+        return;
+    }
+
+    const webDir = GLib.build_filenamev([pkg.pkgdatadir, 'web']);
+    const format = _formatForPath(inputFile.get_basename() || inputArg);
+
+    const xServer = _startPrivateXServer();
+    if (!xServer) {
+        printerr('kaiten-thumbnailer: could not start a private display — cannot render');
+        System.exit(1);
+        return;
+    }
+
+    try {
+        Gtk.init(null);
+    } catch (e) {
+        printerr(`kaiten-thumbnailer: Gtk.init failed: ${e}`);
+        _stopPrivateXServer(xServer);
+        System.exit(1);
+        return;
+    }
+
+    const context = new WebKit2.WebContext();
+    // External review lesson (SPEC-007): WebKitGTK's sandbox defaults to
+    // *off* on a fresh context — this call must always run, negating the
+    // gate, never left as a disable-only conditional.
+    context.set_sandbox_enabled(!_shouldDisableSandbox());
+
+    // Same 'kaiten://' scheme shape as model.js: the reserved
+    // '/model' path always serves *this invocation's* input file,
+    // ignoring whatever a request asks for; everything else resolves
+    // against the bundled web/ dir with a startsWith guard.
+    context.register_uri_scheme('kaiten', (request) => {
+        let path = request.get_path() || '/';
+        if (path === '/model') {
+            inputFile.read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+                try {
+                    let stream = f.read_finish(res);
+                    request.finish(stream, -1, 'application/octet-stream');
+                } catch (e) {
+                    request.finish_error(new GLib.Error(
+                        Gio.IOErrorEnum, Gio.IOErrorEnum.FAILED, 'model read failed'));
+                }
+            });
+            return;
+        }
+        let rel = path.replace(/^\/+/, '');
+        if (rel === '')
+            rel = 'viewer.html';
+        let target = GLib.build_filenamev([webDir, rel]);
+        if (target !== webDir && !target.startsWith(webDir + '/')) {
+            request.finish_error(new GLib.Error(
+                Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'out of bounds'));
+            return;
+        }
+        Gio.File.new_for_path(target).read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+            try {
+                let stream = f.read_finish(res);
+                request.finish(stream, -1, _assetMimeType(target));
+            } catch (e) {
+                request.finish_error(new GLib.Error(
+                    Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'asset not found'));
+            }
+        });
+    });
+
+    const contentManager = new WebKit2.UserContentManager();
+    contentManager.register_script_message_handler('kaiten');
+
+    const view = new WebKit2.WebView({
+        web_context: context,
+        user_content_manager: contentManager,
+    });
+    view.set_size_request(size, size);
+
+    const win = new Gtk.OffscreenWindow();
+    win.add(view);
+    win.show_all();
+
+    const loop = GLib.MainLoop.new(null, false);
+    let finished = false;
+    let exitCode = 1;
+    let timeoutId = 0;
+
+    function finishWith(code) {
+        if (finished)
+            return;
+        finished = true;
+        exitCode = code;
+        if (timeoutId) {
+            GLib.source_remove(timeoutId);
+            timeoutId = 0;
+        }
+        // Every exit path (success, page error, load-failed, web-process
+        // crash, or our own timeout) funnels through here; the private
+        // Xvfb is stopped once, after loop.run() returns, below.
+        loop.quit();
+    }
+
+    // Real bug, found via a solid-black-thumbnail screenshot and a live
+    // strace investigation, not any automated test: capturing via
+    // Gtk.OffscreenWindow.get_pixbuf() produced a validly-sized PNG
+    // containing only the page's own CSS background color — no
+    // rendered geometry — specifically when running inside GNOME's
+    // bwrap thumbnail sandbox (confirmed working correctly outside it,
+    // both in the original SPEC-010 spike and in direct/manual
+    // invocation with this exact codebase). /dev/shm was ruled out
+    // (confirmed writable inside the sandbox via a live diagnostic).
+    // The remaining, unconfirmed but well-fitting theory: something
+    // about WebKit's own multi-process frame handoff to the GTK
+    // offscreen-window compositing path degrades inside the sandbox's
+    // namespace isolation, even though WebKit renders internally fine.
+    // Fix: use WebKitWebView.get_snapshot() instead — WebKit's own
+    // dedicated "give me the rendered page as an image" API, which
+    // doesn't route through GtkOffscreenWindow's generic widget
+    // compositing at all. More direct, and (confirmed by testing)
+    // avoids whatever the compositing-path problem was.
+    function writeSnapshotAndExit() {
+        view.get_snapshot(WebKit2.SnapshotRegion.VISIBLE, WebKit2.SnapshotOptions.NONE, null,
+            (v, res) => {
+                let surface;
+                try {
+                    surface = v.get_snapshot_finish(res);
+                } catch (e) {
+                    printerr(`kaiten-thumbnailer: get_snapshot failed: ${e}`);
+                    finishWith(1);
+                    return;
+                }
+                let pixbuf = Gdk.pixbuf_get_from_surface(surface, 0, 0, size, size);
+                if (!pixbuf) {
+                    printerr('kaiten-thumbnailer: pixbuf_get_from_surface returned nothing');
+                    finishWith(1);
+                    return;
+                }
+                // Atomic write: save to a temp path in the same
+                // directory, then move into place — tumbler (or
+                // anything else watching the output path) never
+                // observes a partially-written PNG.
+                let tmpPath = `${outputPath}.tmp-${System.getpid ? System.getpid() : GLib.random_int()}`;
+                try {
+                    if (!pixbuf.savev(tmpPath, 'png', [], [])) {
+                        printerr('kaiten-thumbnailer: pixbuf save failed');
+                        finishWith(1);
+                        return;
+                    }
+                    Gio.File.new_for_path(tmpPath).move(
+                        Gio.File.new_for_path(outputPath),
+                        Gio.FileCopyFlags.OVERWRITE, null, null);
+                    finishWith(0);
+                } catch (e) {
+                    printerr(`kaiten-thumbnailer: writing output failed: ${e}`);
+                    try {
+                        Gio.File.new_for_path(tmpPath).delete(null);
+                    } catch (e2) { /* nothing to clean up */ }
+                    finishWith(1);
+                }
+            });
+    }
+
+    timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, _thumbnailTimeoutMs(), () => {
+        printerr('kaiten-thumbnailer: render timed out');
+        timeoutId = 0;
+        finishWith(1);
+        return GLib.SOURCE_REMOVE;
+    });
+
+    contentManager.connect('script-message-received::kaiten', (cm, jsResult) => {
+        let msg;
+        try {
+            msg = JSON.parse(jsResult.get_js_value().to_string());
+        } catch (e) {
+            return;
+        }
+        if (finished)
+            return;
+        if (msg.event === 'rendered') {
+            // One extra frame's grace before snapshotting — 'rendered'
+            // fires right after the page's own renderer.render() call,
+            // but WebKit's own internal compositing is a separate step
+            // (confirmed necessary during the rendering-approach spike;
+            // still needed with get_snapshot()).
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                writeSnapshotAndExit();
+                return GLib.SOURCE_REMOVE;
+            });
+        } else if (msg.event === 'error') {
+            printerr(`kaiten-thumbnailer: page error: ${msg.message}`);
+            finishWith(1);
+        }
+    });
+
+    view.connect('load-failed', (v, ev, uri, error) => {
+        printerr(`kaiten-thumbnailer: load-failed: ${error.message}`);
+        finishWith(1);
+    });
+    view.connect('web-process-terminated', (v, reason) => {
+        printerr(`kaiten-thumbnailer: web process terminated: ${reason}`);
+        finishWith(1);
+    });
+
+    view.load_uri('kaiten://app/viewer.html?model=' +
+        encodeURIComponent('kaiten://app/model') +
+        '&format=' + format);
+
+    loop.run();
+    _stopPrivateXServer(xServer);
+    System.exit(exitCode);
+}
+
+main();

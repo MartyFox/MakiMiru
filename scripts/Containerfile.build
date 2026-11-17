@@ -1,0 +1,15 @@
+# Build environment for the kaiten Sushi fork.
+# Matches the host base (Zorin 18 / Ubuntu 24.04) so built artifacts run on
+# the host against distro runtime libraries.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    meson ninja-build pkg-config gcc gettext gjs \
+    gobject-introspection libgirepository1.0-dev \
+    libepoxy-dev libevince-dev libgdk-pixbuf-2.0-dev libglib2.0-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev \
+    libgtksourceview-4-dev libharfbuzz-dev libwebkit2gtk-4.1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src

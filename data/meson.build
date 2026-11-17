@@ -26,3 +26,22 @@ install_data(
   'builder-dark.style-scheme.xml',
   install_dir: join_paths(pkgdatadir, 'gtksourceview-4/styles')
 )
+
+# SPEC-009: explicit .obj -> model/obj shared-mime-info override — don't
+# rely on the host's own database classifying it correctly (see the XML
+# file's own header comment for why).
+install_data(
+  'org.gnome.NautilusPreviewer-model.xml',
+  install_dir: join_paths(datadir, 'mime', 'packages')
+)
+
+# SPEC-010: register src/kaiten-thumbnailer with tumbler per the
+# freedesktop Thumbnail Managing Standard. libexecdir isn't set in this
+# subdir's conf — reuse the shared `conf` from data/meson.build's own
+# top (libexecdir/app_id already set there for the D-Bus service file).
+configure_file(
+  input: 'kaiten-model.thumbnailer.in',
+  output: 'kaiten-model.thumbnailer',
+  configuration: conf,
+  install_dir: join_paths(datadir, 'thumbnailers'),
+)

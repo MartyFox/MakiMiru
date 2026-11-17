@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- SPEC-007: the shipped previewer serves this page only via the
+     kaiten: scheme (model.js) and never via file:; file: stays
+     allow-listed here only for tests/page-selftest-runner.js, a
+     dev-only harness that loads this same fixed page directly and
+     isn't part of the shipped package. CSP is defense-in-depth, not
+     the enforcement boundary — that's the scheme handler itself, which
+     never serves file:// content regardless of what this policy allows. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src kaiten: file: 'unsafe-inline'; connect-src kaiten: file:; style-src 'unsafe-inline'; img-src kaiten: file: data:; font-src kaiten: file:">
+<title>Kaiten 3D viewer</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2d2d2d; }
+  #canvas { width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/addons/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+  function __post(msg) {
+      try {
+          window.webkit.messageHandlers.kaiten.postMessage(JSON.stringify(msg));
+      } catch (e) {
+          console.error('postMessage failed: ' + e);
+      }
+  }
+  window.onerror = function (message, source, line) {
+      __post({ event: 'error', message: message + ' @ ' + source + ':' + line });
+  };
+  window.addEventListener('unhandledrejection', function (ev) {
+      __post({ event: 'error', message: 'unhandled rejection: ' + ev.reason });
+  });
+  __post({ event: 'page-loaded' });
+</script>
+<script>
+  import('./main.js').catch(function (e) {
+      __post({ event: 'error', message: 'module import failed: ' + e });
+  });
+</script>
+</body>
+</html>

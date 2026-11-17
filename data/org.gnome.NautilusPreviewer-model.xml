@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPEC-009: explicit shared-mime-info override for .obj. Ubuntu 24.04's
+  default database resolves .obj -> model/obj already, but
+  that's a property of this one machine's shared-mime-info package set,
+  not a guarantee — other distros/versions can classify .obj as
+  text/plain, in which case Sushi's text viewer wins dispatch instead of
+  this fork's 3D viewer, silently and with no error. Installing this
+  package (per-user, under $XDG_DATA_HOME/mime/packages) makes the
+  mapping explicit rather than relying on host defaults.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="model/obj">
+    <comment>Wavefront OBJ 3D model</comment>
+    <glob pattern="*.obj"/>
+  </mime-type>
+</mime-info>
