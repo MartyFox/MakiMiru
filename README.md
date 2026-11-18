@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/kaitan_workmark_light.png" width="480">
+    <img src="docs/images/kaitan_workmark_dark.png" alt="Kaiten" width="480">
+  </picture>
+</p>
+
 # Kaiten
 
 **3D model previews and thumbnails for GNOME Files.**
