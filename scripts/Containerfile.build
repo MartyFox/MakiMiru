@@ -1,4 +1,4 @@
-# Build environment for the kaiten Sushi fork.
+# Build environment for the makimiru Sushi fork.
 # Matches the host base (Zorin 18 / Ubuntu 24.04) so built artifacts run on
 # the host against distro runtime libraries.
 FROM ubuntu:24.04

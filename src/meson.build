@@ -64,14 +64,14 @@ install_data(
 # freedesktop Thumbnail Managing Standard. Plain gjs script (not
 # gresource-compiled like the previewer's JS) — self-locates web/ assets
 # via the same imports.package.init() pkgdatadir mechanism.
-kaiten_thumbnailer_bin = configure_file(
-  input: 'kaiten-thumbnailer.in',
-  output: 'kaiten-thumbnailer',
+makimiru_thumbnailer_bin = configure_file(
+  input: 'makimiru-thumbnailer.in',
+  output: 'makimiru-thumbnailer',
   configuration: conf,
 )
 
 install_data(
-  kaiten_thumbnailer_bin,
+  makimiru_thumbnailer_bin,
   install_mode: 'rwxr-xr-x',
   install_dir: libexecdir,
 )

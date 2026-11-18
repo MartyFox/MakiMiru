@@ -7,8 +7,8 @@
 # install/remove cycle in the same test pass.
 set -eu
 
-INSTALL_LOG=/tmp/kaiten-deb-install.log
-REMOVE_LOG=/tmp/kaiten-deb-remove.log
+INSTALL_LOG=/tmp/makimiru-deb-install.log
+REMOVE_LOG=/tmp/makimiru-deb-remove.log
 
 check_contains() { # file, substring, label
     file="$1"; needle="$2"; label="$3"
@@ -20,13 +20,13 @@ check_contains() { # file, substring, label
     echo "ok: $label"
 }
 
-check_contains "$INSTALL_LOG" "Kaiten: installing" "postinst intro line"
-check_contains "$INSTALL_LOG" "kaiten-thumbnailer" "postinst names the thumbnailer program"
+check_contains "$INSTALL_LOG" "MakiMiru: installing" "postinst intro line"
+check_contains "$INSTALL_LOG" "makimiru-thumbnailer" "postinst names the thumbnailer program"
 check_contains "$INSTALL_LOG" "org.gnome.NautilusPreviewer" "postinst names the previewer program"
 check_contains "$INSTALL_LOG" "next time you log in" "postinst explains the per-user activation timing"
 check_contains "$INSTALL_LOG" "system Sushi" "postinst states system Sushi is left alone"
 
-check_contains "$REMOVE_LOG" "Kaiten: removing" "prerm intro line"
+check_contains "$REMOVE_LOG" "MakiMiru: removing" "prerm intro line"
 # Release review (2026-11-17): these two checks still looked for the
 # pre-SPEC-012 prerm wording ("currently logged-in user", "next login")
 # and had been failing since that remediation changed prerm to clean up

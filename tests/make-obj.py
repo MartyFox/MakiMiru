@@ -40,7 +40,7 @@ def main():
             offset = tuple(float(x) for x in o.split('=', 1)[1].split(','))
 
     with open(out, 'w') as f:
-        f.write('# kaiten cube fixture\n')
+        f.write('# makimiru cube fixture\n')
         f.write('o cube\n')
         for x, y, z in CUBE_VERTS:
             f.write('v %g %g %g\n' % (

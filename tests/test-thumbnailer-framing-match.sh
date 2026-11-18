@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPEC-010 test 2: the thumbnailer's rendering path (offscreen WebKit +
-# its own 'kaiten://' scheme wiring) produces the same framing
+# its own 'makimiru://' scheme wiring) produces the same framing
 # contract already established for the previewer — fillRatio in the
 # 0.6-0.9 band SPEC-005's selftest pins, same as what a live preview of
 # the same file would show (thumbnail and preview must agree).
@@ -13,15 +13,15 @@ REPO="$(cd "$DIR/.." && pwd)"
 # test-page-selftest.sh/test-framing-selftest.sh. thumbnailer-framing-
 # probe.js only ever reads PKGDATADIR/web/..., never touches the
 # GResource, so $REPO works directly with no build step.
-# KAITEN_TEST_INSTALLED=1 opts into testing the installed prefix.
-if [ "${KAITEN_TEST_INSTALLED:-0}" = "1" ]; then
+# MAKIMIRU_TEST_INSTALLED=1 opts into testing the installed prefix.
+if [ "${MAKIMIRU_TEST_INSTALLED:-0}" = "1" ]; then
     PKGDATADIR="$HOME/.local/share/sushi"
 else
     PKGDATADIR="$REPO"
 fi
 [ -d "$PKGDATADIR/web" ] || { echo "FAIL: $PKGDATADIR/web not found" >&2; exit 1; }
 
-TMP="${TMPDIR:-/tmp}/kaiten-stl"
+TMP="${TMPDIR:-/tmp}/makimiru-stl"
 mkdir -p "$TMP"
 [ -f "$TMP/sphere-20k.stl" ] || python3 "$DIR/make-stl.py" 20000 "$TMP/sphere-20k.stl"
 

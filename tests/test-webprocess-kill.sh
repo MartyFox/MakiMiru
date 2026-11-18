@@ -10,11 +10,11 @@ set -eu
 . "$(dirname "$0")/lib.sh"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-VALID="${TMPDIR:-/tmp}/kaiten-stl/sphere-ascii.stl"
+VALID="${TMPDIR:-/tmp}/makimiru-stl/sphere-ascii.stl"
 mkdir -p "$(dirname "$VALID")"
 [ -f "$VALID" ] || python3 "$DIR/make-stl.py" 500 "$VALID" --ascii
 
-LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kaiten-timing.log"
+LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/makimiru-timing.log"
 log_lines() { [ -f "$LOG" ] && wc -l < "$LOG" || echo 0; }
 
 owner_pid() {

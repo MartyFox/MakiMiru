@@ -6,11 +6,11 @@ set -eu
 . "$(dirname "$0")/lib.sh"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-TMP="${TMPDIR:-/tmp}/kaiten-bad"
+TMP="${TMPDIR:-/tmp}/makimiru-bad"
 mkdir -p "$TMP"
 [ -f "$TMP/garbage.stl" ] || python3 "$DIR/make-bad-fixtures.py" "$TMP"
 
-LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kaiten-timing.log"
+LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/makimiru-timing.log"
 log_lines() { [ -f "$LOG" ] && wc -l < "$LOG" || echo 0; }
 
 owner_pid() {
@@ -69,7 +69,7 @@ pid_mid="$(owner_pid)"
 [ "$pid_mid" = "$pid_before" ] || { echo "FAIL: owner PID changed ($pid_before -> $pid_mid) — previewer crashed" >&2; exit 1; }
 
 # Recovery proof: a valid STL still renders after the error sequence.
-VALID="${TMPDIR:-/tmp}/kaiten-stl/sphere-ascii.stl"
+VALID="${TMPDIR:-/tmp}/makimiru-stl/sphere-ascii.stl"
 mkdir -p "$(dirname "$VALID")"
 [ -f "$VALID" ] || python3 "$DIR/make-stl.py" 500 "$VALID" --ascii
 before="$(log_lines)"

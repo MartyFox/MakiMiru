@@ -4,7 +4,7 @@
 set -eu
 . "$(dirname "$0")/lib.sh"
 
-TMP="${TMPDIR:-/tmp}/kaiten-smoke"
+TMP="${TMPDIR:-/tmp}/makimiru-smoke"
 mkdir -p "$TMP"
 
 # Fixtures: generate deterministic local files, no network.
@@ -23,7 +23,7 @@ png = (b'\x89PNG\r\n\x1a\n'
 open(sys.argv[1], 'wb').write(png)
 EOF
 [ -f "$PDF" ] || printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\nxref\n0 4\ntrailer<</Size 4/Root 1 0 R>>\n%%%%EOF\n' > "$PDF"
-[ -f "$TXT" ] || printf 'kaiten smoke fixture\n' > "$TXT"
+[ -f "$TXT" ] || printf 'makimiru smoke fixture\n' > "$TXT"
 
 # MP3 needs an encoder; skip (with notice) where ffmpeg is unavailable.
 MP3="$TMP/fixture.mp3"

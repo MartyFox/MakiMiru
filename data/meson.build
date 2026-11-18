@@ -35,13 +35,13 @@ install_data(
   install_dir: join_paths(datadir, 'mime', 'packages')
 )
 
-# SPEC-010: register src/kaiten-thumbnailer with tumbler per the
+# SPEC-010: register src/makimiru-thumbnailer with tumbler per the
 # freedesktop Thumbnail Managing Standard. libexecdir isn't set in this
 # subdir's conf — reuse the shared `conf` from data/meson.build's own
 # top (libexecdir/app_id already set there for the D-Bus service file).
 configure_file(
-  input: 'kaiten-model.thumbnailer.in',
-  output: 'kaiten-model.thumbnailer',
+  input: 'makimiru-model.thumbnailer.in',
+  output: 'makimiru-model.thumbnailer',
   configuration: conf,
   install_dir: join_paths(datadir, 'thumbnailers'),
 )

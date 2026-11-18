@@ -1,8 +1,8 @@
 #!/usr/bin/env gjs
 // SPEC-010 test 2 support script: loads a model through the *same*
-// offscreen-WebKit + 'kaiten://' scheme wiring kaiten-thumbnailer
+// offscreen-WebKit + 'makimiru://' scheme wiring makimiru-thumbnailer
 // itself uses (not a reimplementation borrowed from the previewer), then
-// reads window.kaiten.getBounds() at the same point the real CLI
+// reads window.makimiru.getBounds() at the same point the real CLI
 // would snapshot — proving the thumbnailer's rendering path produces the
 // identical framing contract (fillRatio, center) already established for
 // the previewer by SPEC-004/005's selftest, not just "renders something."
@@ -26,7 +26,7 @@ const modelFile = Gio.File.new_for_path(modelPath);
 Gtk.init(null);
 
 const context = new WebKit2.WebContext();
-context.register_uri_scheme('kaiten', (request) => {
+context.register_uri_scheme('makimiru', (request) => {
     let path = request.get_path() || '/';
     if (path === '/model') {
         modelFile.read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
@@ -53,7 +53,7 @@ context.register_uri_scheme('kaiten', (request) => {
 });
 
 const contentManager = new WebKit2.UserContentManager();
-contentManager.register_script_message_handler('kaiten');
+contentManager.register_script_message_handler('makimiru');
 const view = new WebKit2.WebView({ web_context: context, user_content_manager: contentManager });
 view.set_size_request(256, 256);
 const win = new Gtk.OffscreenWindow();
@@ -63,14 +63,14 @@ win.show_all();
 const loop = GLib.MainLoop.new(null, false);
 let status = 3;
 
-contentManager.connect('script-message-received::kaiten', (cm, jsResult) => {
+contentManager.connect('script-message-received::makimiru', (cm, jsResult) => {
     let msg;
     try {
         msg = JSON.parse(jsResult.get_js_value().to_string());
     } catch (e) { return; }
     if (msg.event === 'rendered') {
         view.run_javascript(
-            'JSON.stringify(window.kaiten.getBounds())',
+            'JSON.stringify(window.makimiru.getBounds())',
             null, (v, res) => {
                 try {
                     let value = v.run_javascript_finish(res);
@@ -95,8 +95,8 @@ view.connect('load-failed', (v, ev, uri, error) => {
     loop.quit();
 });
 
-view.load_uri('kaiten://app/viewer.html?model=' +
-    encodeURIComponent('kaiten://app/model') + '&format=' + format);
+view.load_uri('makimiru://app/viewer.html?model=' +
+    encodeURIComponent('makimiru://app/model') + '&format=' + format);
 
 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 15000, () => {
     printerr('timeout');

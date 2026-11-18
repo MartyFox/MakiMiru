@@ -8,14 +8,14 @@ REPO="$(cd "$DIR/.." && pwd)"
 
 # SPEC-009 (external review, Low): default to the checkout, not the
 # installed copy — a stale install could otherwise pass tests that don't
-# reflect the current source. Set KAITEN_TEST_INSTALLED=1 to
+# reflect the current source. Set MAKIMIRU_TEST_INSTALLED=1 to
 # deliberately test the installed prefix instead.
-if [ "${KAITEN_TEST_INSTALLED:-0}" = "1" ]; then
+if [ "${MAKIMIRU_TEST_INSTALLED:-0}" = "1" ]; then
     PAGE="$HOME/.local/share/sushi/web/viewer.html"
 else
     PAGE="$REPO/web/viewer.html"
 fi
-[ -f "$PAGE" ] || { echo "viewer.html not found at $PAGE — run scripts/install-user.sh or unset KAITEN_TEST_INSTALLED" >&2; exit 1; }
+[ -f "$PAGE" ] || { echo "viewer.html not found at $PAGE — run scripts/install-user.sh or unset MAKIMIRU_TEST_INSTALLED" >&2; exit 1; }
 
 # Ensure a display when run over SSH into a session machine.
 export DISPLAY="${DISPLAY:-:0}"

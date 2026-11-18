@@ -38,7 +38,7 @@ caught by a real `dpkg-deb` parse failure while building this).
   paths become byte-identical to the real package's own files.
 
   Fix: the previewer (binary + everything private to it) now builds in
-  its own pass with `--prefix=/opt/kaiten/previewer` — a private,
+  its own pass with `--prefix=/opt/makimiru/previewer` — a private,
   package-owned location that shares no paths with `gnome-sushi` at
   all, so no `Conflicts:`/`Replaces:` is needed (which would have meant
   effectively replacing the system package, violating Part I's "don't
@@ -52,7 +52,7 @@ caught by a real `dpkg-deb` parse failure while building this).
 - **Only the D-Bus service file needs per-user handling — not the
   `.thumbnailer` registration too.** An earlier version of this design
   treated both symmetrically "for consistency," but the `.thumbnailer`
-  file's name (`kaiten-model.thumbnailer`) is unique to this fork
+  file's name (`makimiru-model.thumbnailer`) is unique to this fork
   and was never actually forced off `/usr` by anything — only the D-Bus
   service file collides (upstream Sushi ships one with the identical
   filename). Simplified once that became clear: the thumbnailer and its
@@ -60,15 +60,15 @@ caught by a real `dpkg-deb` parse failure while building this).
   `apt install`, no login-wait needed. Only the previewer's spacebar
   activation needs the next-login step.
 
-- Activation model (SPEC-011, user-approved): `kaiten-activate.service`
+- Activation model (SPEC-011, user-approved): `makimiru-activate.service`
   (a systemd --user unit, auto-enabled via a
   `graphical-session.target.wants` symlink — same convention
   `update-notifier` uses on this reference machine) runs
-  `kaiten-activate-user` on every graphical login to reconcile that
+  `makimiru-activate-user` on every graphical login to reconcile that
   one D-Bus service file against a template staged at
-  `/usr/share/kaiten/activation-templates/`.
+  `/usr/share/makimiru/activation-templates/`.
 
-- `kaiten-activate-user` is a *reconciliation*, not a one-shot
+- `makimiru-activate-user` is a *reconciliation*, not a one-shot
   install action: it activates when the template exists (package
   installed) and cleans up when it doesn't (package removed) — this is
   what makes removal correct even for a user who wasn't logged in when
@@ -85,7 +85,7 @@ caught by a real `dpkg-deb` parse failure while building this).
   file). This is unrelated to the `/usr`-path constraint SPEC-010 found
   — a second, independent constraint on top of it, only visible once
   the first one was fixed and the binary could actually be reached.
-  Fix (`src/kaiten-thumbnailer.in`'s `_startPrivateXServer()`):
+  Fix (`src/makimiru-thumbnailer.in`'s `_startPrivateXServer()`):
   spawn a private, throwaway Xvfb inside the same sandboxed process
   tree before `Gtk.init()` — fully self-contained, no host display
   server needed in any context. Always spawned unconditionally, not

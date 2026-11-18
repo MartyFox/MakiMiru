@@ -1,4 +1,4 @@
-Package: kaiten
+Package: makimiru
 Version: @VERSION@
 Section: gnome
 Priority: optional
@@ -7,9 +7,9 @@ Depends: gjs, libwebkit2gtk-4.1-0, libgtk-3-0t64, libgtksourceview-4-0, libevdoc
 Recommends: nautilus
 Suggests: gir1.2-lokdocview-0.1
 Maintainer: Marty Fox <9006614+MartyFox@users.noreply.github.com>
-Homepage: https://github.com/MartyFox/kaiten
+Homepage: https://github.com/MartyFox/makimiru
 Description: Interactive 3D model preview and thumbnails for GNOME
- Kaiten adds spacebar Quick-Look-style preview and file-manager grid
+ MakiMiru adds spacebar Quick-Look-style preview and file-manager grid
  thumbnails for STL, 3MF, and OBJ 3D model files to GNOME Files
  (Nautilus). It is a fork of GNOME Sushi that adds one 3D viewer module
  plus a standalone thumbnailer, installed alongside the system Sushi
@@ -19,5 +19,5 @@ Description: Interactive 3D model preview and thumbnails for GNOME
  files are installed system-wide and work immediately after install.
  The spacebar previewer needs one per-user D-Bus registration, which is
  written automatically and unprivileged the next time each user logs in
- to a graphical session (see /usr/libexec/kaiten-activate-user).
+ to a graphical session (see /usr/libexec/makimiru-activate-user).
  Removing the package reverts it for every local user.

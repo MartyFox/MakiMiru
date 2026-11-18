@@ -6,7 +6,7 @@
 # seccomp fd), PNG checked. Needs sudo and the .deb installed.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
-BIN=/usr/libexec/kaiten-thumbnailer
+BIN=/usr/libexec/makimiru-thumbnailer
 SYSCTL=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
 
 [ -x "$BIN" ] || { echo "SKIP: $BIN not installed (deb mode only)"; exit 0; }

@@ -44,7 +44,7 @@ def normal(tri):
 
 def write_binary(tris, path):
     with open(path, 'wb') as f:
-        f.write(b'kaiten fixture'.ljust(80, b'\0'))
+        f.write(b'makimiru fixture'.ljust(80, b'\0'))
         f.write(struct.pack('<I', len(tris)))
         for tri in tris:
             f.write(struct.pack('<3f', *normal(tri)))
@@ -55,14 +55,14 @@ def write_binary(tris, path):
 
 def write_ascii(tris, path):
     with open(path, 'w') as f:
-        f.write('solid kaiten\n')
+        f.write('solid makimiru\n')
         for tri in tris:
             f.write('facet normal %g %g %g\n' % normal(tri))
             f.write(' outer loop\n')
             for v in tri:
                 f.write('  vertex %g %g %g\n' % v)
             f.write(' endloop\nendfacet\n')
-        f.write('endsolid kaiten\n')
+        f.write('endsolid makimiru\n')
 
 
 def main():

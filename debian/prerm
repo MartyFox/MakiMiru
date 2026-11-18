@@ -6,20 +6,20 @@
 #
 # External review, High, real bug: an earlier version of this script
 # only cleaned up users with an active D-Bus session
-# (/run/user/*/bus), and relied on kaiten-activate-user's own
+# (/run/user/*/bus), and relied on makimiru-activate-user's own
 # "reconcile on next login" logic to clean up everyone else. That
-# reasoning was broken: kaiten-activate-user and the systemd --user
+# reasoning was broken: makimiru-activate-user and the systemd --user
 # unit that triggers it are THEMSELVES package files — dpkg removes
 # them as part of this same removal transaction, before any future
 # login can ever run them again. A user who is logged out at removal
 # time would have been left with a permanently dangling
 # ~/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service
-# pointing at a now-deleted /opt/kaiten/previewer binary, forever
+# pointing at a now-deleted /opt/makimiru/previewer binary, forever
 # (or until they noticed previewing silently stopped working and
 # manually deleted it) — there was no mechanism left that could ever
 # fix it for them. Fixed: this is now the ONLY removal-time cleanup
 # mechanism, and it covers every local user with a home directory that
-# actually has the file, not just active sessions. (kaiten-activate-
+# actually has the file, not just active sessions. (makimiru-activate-
 # user's own removal branch is retained as defense-in-depth for the
 # narrow case where it runs while the package is still nominally
 # installed but its templates are somehow missing — it is not, and
@@ -30,16 +30,16 @@
 # whatever file existed at that path unconditionally — clobbering a
 # user's own hand-edited previewer override, if they had one, with no
 # warning. Fixed: only ever deletes a file that carries the
-# X-Kaiten-Managed=true marker this project's own template writes
+# X-MakiMiru-Managed=true marker this project's own template writes
 # (data/org.gnome.NautilusPreviewer.service.in) — anything else is left
 # alone with a clear warning printed, never silently touched.
 set -e
 
 DBUS_SERVICE_REL=".local/share/dbus-1/services/org.gnome.NautilusPreviewer.service"
-MARKER="X-Kaiten-Managed=true"
+MARKER="X-MakiMiru-Managed=true"
 
 if [ "$1" = "remove" ]; then
-    echo "Kaiten: removing the 3D model previewer and thumbnailer."
+    echo "MakiMiru: removing the 3D model previewer and thumbnailer."
     echo "  - Reverting every local user's previewer registration to the system default now (not just currently logged-in ones)."
     echo "  - 3D thumbnails stop immediately for everyone (they were system-wide, no per-user step)."
 
@@ -55,16 +55,16 @@ if [ "$1" = "remove" ]; then
         # symlink can do is make them delete their own file.
         # Exit codes: 0 removed, 2 not ours, 3 absent.
         rc=0
-        KAITEN_SVC="$svc" KAITEN_MARKER="$MARKER" \
+        MAKIMIRU_SVC="$svc" MAKIMIRU_MARKER="$MARKER" \
             runuser -u "$user" -- sh -c '
-                [ -f "$KAITEN_SVC" ] || exit 3
-                grep -qxF "$KAITEN_MARKER" "$KAITEN_SVC" 2>/dev/null || exit 2
-                rm -f "$KAITEN_SVC"
+                [ -f "$MAKIMIRU_SVC" ] || exit 3
+                grep -qxF "$MAKIMIRU_MARKER" "$MAKIMIRU_SVC" 2>/dev/null || exit 2
+                rm -f "$MAKIMIRU_SVC"
             ' 2>/dev/null || rc=$?
 
         case "$rc" in
             0) echo "  - removed $svc" ;;
-            2) echo "  - WARNING: $svc does not look like a Kaiten-managed file (no $MARKER marker) — leaving it alone. Remove it yourself if it's stale." >&2
+            2) echo "  - WARNING: $svc does not look like a MakiMiru-managed file (no $MARKER marker) — leaving it alone. Remove it yourself if it's stale." >&2
                continue ;;
             3) continue ;;
             *) echo "  - WARNING: could not check $svc as $user (exit $rc) — remove it yourself if it exists." >&2
@@ -75,8 +75,8 @@ if [ "$1" = "remove" ]; then
         if [ -S "$bus" ]; then
             # Active session: also nudge its D-Bus daemon to notice the
             # removal immediately, not just on its next lookup.
-            KAITEN_BUS="$bus" HOME="$home" runuser --preserve-environment -u "$user" -- sh -c '
-                export DBUS_SESSION_BUS_ADDRESS="unix:path=$KAITEN_BUS"
+            MAKIMIRU_BUS="$bus" HOME="$home" runuser --preserve-environment -u "$user" -- sh -c '
+                export DBUS_SESSION_BUS_ADDRESS="unix:path=$MAKIMIRU_BUS"
                 dbus-send --session --type=method_call \
                     --dest=org.freedesktop.DBus / org.freedesktop.DBus.ReloadConfig \
                     >/dev/null 2>&1 || true

@@ -1,4 +1,4 @@
 [Thumbnailer Entry]
-TryExec=@libexecdir@/kaiten-thumbnailer
-Exec=@libexecdir@/kaiten-thumbnailer %i %o %s
+TryExec=@libexecdir@/makimiru-thumbnailer
+Exec=@libexecdir@/makimiru-thumbnailer %i %o %s
 MimeType=model/stl;application/sla;model/3mf;application/vnd.ms-package.3dmanufacturing-3dmodel+xml;model/obj;

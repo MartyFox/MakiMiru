@@ -6,18 +6,18 @@
 set -eu
 . "$(dirname "$0")/lib.sh"
 
-dpkg -l kaiten 2>/dev/null | grep -q '^ii' || {
-    echo "FAIL: kaiten is not currently installed — run test-deb-install.sh first" >&2
+dpkg -l makimiru 2>/dev/null | grep -q '^ii' || {
+    echo "FAIL: makimiru is not currently installed — run test-deb-install.sh first" >&2
     exit 1
 }
 
-sudo apt-get remove -y kaiten >/tmp/kaiten-deb-remove.log 2>&1 || {
+sudo apt-get remove -y makimiru >/tmp/makimiru-deb-remove.log 2>&1 || {
     echo "FAIL: apt remove failed:" >&2
-    cat /tmp/kaiten-deb-remove.log >&2
+    cat /tmp/makimiru-deb-remove.log >&2
     exit 1
 }
 
-grep -q "Kaiten: removing" /tmp/kaiten-deb-remove.log || {
+grep -q "MakiMiru: removing" /tmp/makimiru-deb-remove.log || {
     echo "FAIL: prerm's transparency output not found in apt remove output" >&2
     exit 1
 }
@@ -26,12 +26,12 @@ grep -q "Kaiten: removing" /tmp/kaiten-deb-remove.log || {
     echo "FAIL: per-user D-Bus service file still present after apt remove" >&2
     exit 1
 }
-[ ! -x /usr/libexec/kaiten-thumbnailer ] || {
-    echo "FAIL: /usr/libexec/kaiten-thumbnailer still present after apt remove" >&2
+[ ! -x /usr/libexec/makimiru-thumbnailer ] || {
+    echo "FAIL: /usr/libexec/makimiru-thumbnailer still present after apt remove" >&2
     exit 1
 }
-[ ! -d /opt/kaiten ] || {
-    echo "FAIL: /opt/kaiten still present after apt remove" >&2
+[ ! -d /opt/makimiru ] || {
+    echo "FAIL: /opt/makimiru still present after apt remove" >&2
     exit 1
 }
 

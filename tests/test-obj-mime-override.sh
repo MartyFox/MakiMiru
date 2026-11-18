@@ -14,18 +14,18 @@
 #      proof of the fallback code path by itself.
 # SPEC-011: the dev per-user install (scripts/install-user.sh) and the
 # packaged .deb install put the GResource/mime-override at different
-# paths (private prefix under /opt/kaiten/previewer vs $HOME/.local)
+# paths (private prefix under /opt/makimiru/previewer vs $HOME/.local)
 # — override via env vars to run this same test against either without
 # duplicating it. Defaults match the dev workflow, unchanged.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PREFIX="${KAITEN_TEST_PREFIX:-$HOME/.local}"
-LIBDIR="${KAITEN_TEST_LIBDIR:-$HOME/.local/lib/$(uname -m)-linux-gnu}"
-PKGDATADIR="${KAITEN_TEST_PKGDATADIR:-$PREFIX/share/sushi}"
-MIME_DIR="${KAITEN_TEST_MIME_DIR:-$HOME/.local/share/mime/packages}"
+PREFIX="${MAKIMIRU_TEST_PREFIX:-$HOME/.local}"
+LIBDIR="${MAKIMIRU_TEST_LIBDIR:-$HOME/.local/lib/$(uname -m)-linux-gnu}"
+PKGDATADIR="${MAKIMIRU_TEST_PKGDATADIR:-$PREFIX/share/sushi}"
+MIME_DIR="${MAKIMIRU_TEST_MIME_DIR:-$HOME/.local/share/mime/packages}"
 
 [ -f "$PKGDATADIR/org.gnome.NautilusPreviewer.src.gresource" ] || {
-    echo "FAIL: $PKGDATADIR/org.gnome.NautilusPreviewer.src.gresource not found — run scripts/install-user.sh (or set KAITEN_TEST_* for a .deb install)" >&2
+    echo "FAIL: $PKGDATADIR/org.gnome.NautilusPreviewer.src.gresource not found — run scripts/install-user.sh (or set MAKIMIRU_TEST_* for a .deb install)" >&2
     exit 1
 }
 
@@ -43,7 +43,7 @@ grep -q 'model/obj' "$MIME_XML" || {
     exit 1
 }
 
-TMP="${TMPDIR:-/tmp}/kaiten-3mf-obj"
+TMP="${TMPDIR:-/tmp}/makimiru-3mf-obj"
 mkdir -p "$TMP"
 [ -f "$TMP/cube.obj" ] || python3 "$DIR/make-obj.py" "$TMP/cube.obj"
 

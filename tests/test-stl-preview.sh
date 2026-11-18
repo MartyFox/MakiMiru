@@ -7,9 +7,9 @@ set -eu
 . "$(dirname "$0")/lib.sh"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-TMP="${TMPDIR:-/tmp}/kaiten-stl"
+TMP="${TMPDIR:-/tmp}/makimiru-stl"
 mkdir -p "$TMP"
-LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kaiten-timing.log"
+LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/makimiru-timing.log"
 
 # ~1 MB binary (20k triangles) and a small ASCII sphere.
 [ -f "$TMP/sphere-20k.stl" ] || python3 "$DIR/make-stl.py" 20000 "$TMP/sphere-20k.stl"

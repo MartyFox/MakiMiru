@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPEC-007 test 3 (static): the model viewer must never grant broad
 # file:// privilege to the WebView — the page reaches local content
-# only through the constrained 'kaiten' scheme.
+# only through the constrained 'makimiru' scheme.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$DIR/.." && pwd)"

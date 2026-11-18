@@ -11,7 +11,7 @@
 #   override. None of these collide with the system gnome-sushi
 #   package — their names/paths are unique to this fork.
 #
-#   Pass 2 (--prefix=/opt/kaiten/previewer): the previewer binary and
+#   Pass 2 (--prefix=/opt/makimiru/previewer): the previewer binary and
 #   everything private to it (libsushi, its typelib/gir, both
 #   gresources, the gtksourceview style, the appdata.xml). These *do*
 #   collide with the real gnome-sushi package byte-for-byte at the same
@@ -35,18 +35,18 @@
 # real constraint — simplified back out once that became clear). The
 # ONLY thing that must stay per-user is the D-Bus service file itself,
 # because a system-wide one would collide with gnome-sushi's own file
-# of the same name. `kaiten-activate.service` (a systemd --user
+# of the same name. `makimiru-activate.service` (a systemd --user
 # unit, auto-enabled via a `graphical-session.target.wants` symlink —
 # the same convention `update-notifier` uses on the reference machine)
-# runs `kaiten-activate-user` on every graphical login to reconcile
+# runs `makimiru-activate-user` on every graphical login to reconcile
 # that one file against a template.
 set -eu
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE=kaiten-build
-VERSION="${KAITEN_DEB_VERSION:-1.0.0-1}"
+IMAGE=makimiru-build
+VERSION="${MAKIMIRU_DEB_VERSION:-1.0.0-1}"
 PKGROOT="$REPO/deb-build/pkgroot"
-PREVIEWER_PREFIX=/opt/kaiten/previewer
+PREVIEWER_PREFIX=/opt/makimiru/previewer
 
 podman build -q -t "$IMAGE" -f "$REPO/scripts/Containerfile.build" "$REPO/scripts"
 
@@ -89,7 +89,7 @@ rm -rf "$PKGROOT/usr/lib"
     exit 1
 }
 
-# --- Pass 2 (/opt/kaiten/previewer) contributions: the entire
+# --- Pass 2 (/opt/makimiru/previewer) contributions: the entire
 # previewer payload, at its own private, non-colliding prefix. ---
 mkdir -p "$(dirname "$PKGROOT$PREVIEWER_PREFIX")"
 cp -a "$PREV$PREVIEWER_PREFIX" "$PKGROOT$PREVIEWER_PREFIX"
@@ -100,8 +100,8 @@ cp -a "$PREV$PREVIEWER_PREFIX" "$PKGROOT$PREVIEWER_PREFIX"
 # it out as the per-user activation template.
 DBUS_SVC="$PKGROOT$PREVIEWER_PREFIX/share/dbus-1/services/org.gnome.NautilusPreviewer.service"
 [ -f "$DBUS_SVC" ] || { echo "expected $DBUS_SVC from the previewer pass, not found" >&2; exit 1; }
-mkdir -p "$PKGROOT/usr/share/kaiten/activation-templates"
-mv "$DBUS_SVC" "$PKGROOT/usr/share/kaiten/activation-templates/"
+mkdir -p "$PKGROOT/usr/share/makimiru/activation-templates"
+mv "$DBUS_SVC" "$PKGROOT/usr/share/makimiru/activation-templates/"
 rmdir --ignore-fail-on-non-empty \
     "$PKGROOT$PREVIEWER_PREFIX/share/dbus-1/services" \
     "$PKGROOT$PREVIEWER_PREFIX/share/dbus-1" 2>/dev/null || true
@@ -110,14 +110,14 @@ rmdir --ignore-fail-on-non-empty \
 # real packages on this reference machine use, e.g. update-notifier's
 # graphical-session.target.wants entries) ---
 mkdir -p "$PKGROOT/usr/lib/systemd/user/graphical-session.target.wants"
-install -m 644 "$REPO/debian/kaiten-activate.service" \
-    "$PKGROOT/usr/lib/systemd/user/kaiten-activate.service"
-ln -s ../kaiten-activate.service \
-    "$PKGROOT/usr/lib/systemd/user/graphical-session.target.wants/kaiten-activate.service"
+install -m 644 "$REPO/debian/makimiru-activate.service" \
+    "$PKGROOT/usr/lib/systemd/user/makimiru-activate.service"
+ln -s ../makimiru-activate.service \
+    "$PKGROOT/usr/lib/systemd/user/graphical-session.target.wants/makimiru-activate.service"
 
 mkdir -p "$PKGROOT/usr/libexec"
-install -m 755 "$REPO/debian/kaiten-activate-user" \
-    "$PKGROOT/usr/libexec/kaiten-activate-user"
+install -m 755 "$REPO/debian/makimiru-activate-user" \
+    "$PKGROOT/usr/libexec/makimiru-activate-user"
 
 # --- DEBIAN control files ---
 mkdir -p "$PKGROOT/DEBIAN"
@@ -126,7 +126,7 @@ install -m 755 "$REPO/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 755 "$REPO/debian/prerm" "$PKGROOT/DEBIAN/prerm"
 
 # --- Build ---
-OUT="$REPO/deb-build/kaiten_${VERSION}_amd64.deb"
+OUT="$REPO/deb-build/makimiru_${VERSION}_amd64.deb"
 dpkg-deb --build --root-owner-group "$PKGROOT" "$OUT"
 
 echo "Built: $OUT"

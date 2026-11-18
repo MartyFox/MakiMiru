@@ -10,9 +10,9 @@ set -eu
 . "$(dirname "$0")/lib.sh"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-TMP="${TMPDIR:-/tmp}/kaiten-3mf-obj"
+TMP="${TMPDIR:-/tmp}/makimiru-3mf-obj"
 mkdir -p "$TMP"
-LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kaiten-timing.log"
+LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/makimiru-timing.log"
 
 [ -f "$TMP/cube.obj" ] || python3 "$DIR/make-obj.py" "$TMP/cube.obj"
 

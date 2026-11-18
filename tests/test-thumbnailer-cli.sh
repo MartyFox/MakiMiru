@@ -10,14 +10,14 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$DIR/.." && pwd)"
 . "$DIR/thumbnailer-lib.sh"
 assert_thumbnailer_fresh "$REPO"
-BIN="${KAITEN_TEST_BIN:-$HOME/.local/libexec/kaiten-thumbnailer}"
+BIN="${MAKIMIRU_TEST_BIN:-$HOME/.local/libexec/makimiru-thumbnailer}"
 
 export DISPLAY="${DISPLAY:-:0}"
 
-STL="${TMPDIR:-/tmp}/kaiten-stl"
-OBJ3MF="${TMPDIR:-/tmp}/kaiten-3mf-obj"
-BAD="${TMPDIR:-/tmp}/kaiten-bad"
-BOMBS="${TMPDIR:-/tmp}/kaiten-bombs"
+STL="${TMPDIR:-/tmp}/makimiru-stl"
+OBJ3MF="${TMPDIR:-/tmp}/makimiru-3mf-obj"
+BAD="${TMPDIR:-/tmp}/makimiru-bad"
+BOMBS="${TMPDIR:-/tmp}/makimiru-bombs"
 mkdir -p "$STL" "$OBJ3MF" "$BAD" "$BOMBS"
 [ -f "$STL/sphere-20k.stl" ] || python3 "$DIR/make-stl.py" 20000 "$STL/sphere-20k.stl"
 [ -f "$OBJ3MF/cube.3mf" ] || python3 "$DIR/make-3mf.py" "$OBJ3MF/cube.3mf"
@@ -25,7 +25,7 @@ mkdir -p "$STL" "$OBJ3MF" "$BAD" "$BOMBS"
 [ -f "$BAD/big.stl" ] || python3 "$DIR/make-bad-fixtures.py" "$BAD"
 [ -f "$BOMBS/zipbomb.3mf" ] || python3 "$DIR/make-bomb-fixtures.py" "$BOMBS"
 
-OUTDIR="${TMPDIR:-/tmp}/kaiten-thumb-cli-test"
+OUTDIR="${TMPDIR:-/tmp}/makimiru-thumb-cli-test"
 mkdir -p "$OUTDIR"
 rm -f "$OUTDIR"/*.png
 

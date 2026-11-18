@@ -3,7 +3,7 @@
 # External review (SPEC-010 follow-up): the thumbnailer tests hardcode
 # $HOME/.local paths, same class of stale-install risk SPEC-009 fixed
 # for the previewer's page-selftest tests. Unlike viewer.html (a loose
-# file testable directly from the checkout), kaiten-thumbnailer is a
+# file testable directly from the checkout), makimiru-thumbnailer is a
 # meson configure_file() output (@GJS@ etc substituted) — there's no
 # "raw checkout" equivalent to run directly. The fix here is a loud
 # freshness check instead: fail immediately if the installed binary is
@@ -15,21 +15,21 @@ assert_thumbnailer_fresh() { # repo_root
 
     # SPEC-011: a .deb install has no build-install/ dev-staging tree to
     # diff against (its own build/staging lives under deb-build/, a
-    # separate pipeline) — KAITEN_TEST_BIN opts into trusting that
+    # separate pipeline) — MAKIMIRU_TEST_BIN opts into trusting that
     # pipeline's own freshness instead of re-deriving it here (build-
     # deb.sh recompiles from source every run, so "stale" isn't a
     # meaningful risk the way a hand-run install-user.sh's is).
-    if [ -n "${KAITEN_TEST_BIN:-}" ]; then
-        [ -x "$KAITEN_TEST_BIN" ] || {
-            echo "FAIL: $KAITEN_TEST_BIN not found or not executable" >&2
+    if [ -n "${MAKIMIRU_TEST_BIN:-}" ]; then
+        [ -x "$MAKIMIRU_TEST_BIN" ] || {
+            echo "FAIL: $MAKIMIRU_TEST_BIN not found or not executable" >&2
             exit 1
         }
         return
     fi
 
-    installed="$HOME/.local/libexec/kaiten-thumbnailer"
-    staged="$repo/build-install$HOME/.local/libexec/kaiten-thumbnailer"
-    src="$repo/src/kaiten-thumbnailer.in"
+    installed="$HOME/.local/libexec/makimiru-thumbnailer"
+    staged="$repo/build-install$HOME/.local/libexec/makimiru-thumbnailer"
+    src="$repo/src/makimiru-thumbnailer.in"
 
     [ -f "$src" ] || { echo "FAIL: $src not found" >&2; exit 1; }
     [ -f "$staged" ] || {

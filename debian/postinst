@@ -4,9 +4,9 @@
 set -e
 
 if [ "$1" = "configure" ]; then
-    echo "Kaiten: installing the 3D model previewer and thumbnailer."
-    echo "  - Thumbnailer program: /usr/libexec/kaiten-thumbnailer"
-    echo "  - Previewer program (private, does not touch system Sushi's own files): /opt/kaiten/previewer/libexec/org.gnome.NautilusPreviewer"
+    echo "MakiMiru: installing the 3D model previewer and thumbnailer."
+    echo "  - Thumbnailer program: /usr/libexec/makimiru-thumbnailer"
+    echo "  - Previewer program (private, does not touch system Sushi's own files): /opt/makimiru/previewer/libexec/org.gnome.NautilusPreviewer"
     echo "  - System-wide MIME type declaration for .obj files: /usr/share/mime/packages/org.gnome.NautilusPreviewer-model.xml"
     echo "  - 3D thumbnails in Files (Nautilus): active immediately, no further step."
     echo "  - Spacebar 3D previewer: registers as your default the next time you log in to your desktop — nothing to run yourself."
@@ -16,7 +16,7 @@ if [ "$1" = "configure" ]; then
         update-mime-database /usr/share/mime >/dev/null 2>&1 || true
     fi
 
-    # See debian/kaiten-activate-user's own header comment: the
+    # See debian/makimiru-activate-user's own header comment: the
     # per-user registration is written unprivileged, by that user's own
     # systemd --user session, not by this root postinst — this is the
     # activation-model decision recorded in SPEC-011.

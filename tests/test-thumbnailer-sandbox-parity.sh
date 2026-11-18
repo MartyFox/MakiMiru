@@ -2,14 +2,14 @@
 # SPEC-010 acceptance criterion: the thumbnailer applies the same
 # SPEC-007 sandbox-gating posture as the previewer — no weaker path for
 # unattended use. The two implementations are a deliberate, documented
-# duplication (see kaiten-thumbnailer.in's header comment), not a
+# duplication (see makimiru-thumbnailer.in's header comment), not a
 # shared import, so this test statically checks they stay in structural
 # sync rather than trusting the comment alone.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$DIR/.." && pwd)"
 MODEL="$REPO/src/viewers/model.js"
-THUMB="$REPO/src/kaiten-thumbnailer.in"
+THUMB="$REPO/src/makimiru-thumbnailer.in"
 
 fail=0
 

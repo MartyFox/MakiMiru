@@ -4,7 +4,7 @@
 set -eu
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE=kaiten-build
+IMAGE=makimiru-build
 
 podman build -q -t "$IMAGE" -f "$REPO/scripts/Containerfile.build" "$REPO/scripts"
 

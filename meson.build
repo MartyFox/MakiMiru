@@ -50,5 +50,5 @@ subdir('data')
 subdir('po')
 subdir('src')
 
-# Kaiten: 3D viewer page + vendored three.js, loaded by src/viewers/model.js
+# MakiMiru: 3D viewer page + vendored three.js, loaded by src/viewers/model.js
 install_subdir('web', install_dir: pkgdatadir)

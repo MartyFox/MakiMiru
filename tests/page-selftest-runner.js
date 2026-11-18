@@ -16,7 +16,7 @@ if (ARGV.length !== 1) {
 }
 
 let contentManager = new WebKit2.UserContentManager();
-contentManager.register_script_message_handler('kaiten');
+contentManager.register_script_message_handler('makimiru');
 
 let view = new WebKit2.WebView({user_content_manager: contentManager});
 let settings = view.get_settings();
@@ -30,7 +30,7 @@ win.show_all();
 let status = 2;
 let loop = GLib.MainLoop.new(null, false);
 
-contentManager.connect('script-message-received::kaiten', (cm, jsResult) => {
+contentManager.connect('script-message-received::makimiru', (cm, jsResult) => {
     let msg;
     try {
         msg = JSON.parse(jsResult.get_js_value().to_string());

@@ -3,9 +3,9 @@
 # PASS/FAIL line per test plus a summary. Exit status: number of failures
 # (0 = all passed).
 #
-#   tests/run-all.sh deb   test the built .deb (deb-build/kaiten_*.deb):
+#   tests/run-all.sh deb   test the built .deb (deb-build/makimiru_*.deb):
 #                          installs it, runs every applicable test against
-#                          /opt/kaiten + /usr, removes it, checks the
+#                          /opt/makimiru + /usr, removes it, checks the
 #                          postinst/prerm output, reinstalls it.
 #   tests/run-all.sh dev   test the per-user dev install (~/.local, from
 #                          scripts/container-build.sh + install-user.sh).
@@ -17,13 +17,13 @@
 #
 # Release review (2026-11-17): before this script the suite had no
 # single entry point; tests silently depended on run order (fixtures in
-# /tmp, install logs) and on six KAITEN_TEST_* variables being set
+# /tmp, install logs) and on six MAKIMIRU_TEST_* variables being set
 # by hand for a .deb install, so "the full suite passes" wasn't
 # reproducible.
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 MODE="${1:-}"
-LOGDIR="${LOGDIR:-${TMPDIR:-/tmp}/kaiten-test-logs}"
+LOGDIR="${LOGDIR:-${TMPDIR:-/tmp}/makimiru-test-logs}"
 PER_TEST_TIMEOUT=300
 
 uid="$(id -u)"
@@ -38,12 +38,12 @@ DEB_LIFECYCLE="test-deb-install.sh test-deb-remove.sh test-postinst-output.sh"
 
 case "$MODE" in
 deb)
-    P=/opt/kaiten/previewer
-    export KAITEN_TEST_BIN=/usr/libexec/kaiten-thumbnailer
-    export KAITEN_TEST_PREFIX="$P"
-    export KAITEN_TEST_LIBDIR="$P/lib/$(uname -m)-linux-gnu"
-    export KAITEN_TEST_PKGDATADIR="$P/share/sushi"
-    export KAITEN_TEST_MIME_DIR=/usr/share/mime/packages
+    P=/opt/makimiru/previewer
+    export MAKIMIRU_TEST_BIN=/usr/libexec/makimiru-thumbnailer
+    export MAKIMIRU_TEST_PREFIX="$P"
+    export MAKIMIRU_TEST_LIBDIR="$P/lib/$(uname -m)-linux-gnu"
+    export MAKIMIRU_TEST_PKGDATADIR="$P/share/sushi"
+    export MAKIMIRU_TEST_MIME_DIR=/usr/share/mime/packages
     skip="$DEV_ONLY $DEB_LIFECYCLE"
     first="test-deb-install.sh"
     last="test-deb-remove.sh test-postinst-output.sh test-deb-install.sh"

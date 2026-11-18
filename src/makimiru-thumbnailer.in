@@ -1,7 +1,7 @@
 #!@GJS@
 
 /*
- * Copyright (C) 2026 Kaiten contributors
+ * Copyright (C) 2026 MakiMiru contributors
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -17,7 +17,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  *
  * SPEC-010: freedesktop Thumbnail Managing Standard CLI for
- * STL/3MF/OBJ. Invoked by tumbler as `kaiten-thumbnailer INPUT
+ * STL/3MF/OBJ. Invoked by tumbler as `makimiru-thumbnailer INPUT
  * OUTPUT SIZE`; writes a PNG to OUTPUT and exits 0, or exits non-zero
  * and writes nothing on any failure. Renders via the same offscreen
  * WebKit + web/main.js page (loaders, auto-framing, SPEC-008 preflight
@@ -71,7 +71,7 @@ const OVERSIZED_THRESHOLD_BYTES = 100 * 1024 * 1024;
 const DEFAULT_THUMBNAIL_TIMEOUT_MS = 12000;
 
 function _thumbnailTimeoutMs() {
-    let override = GLib.getenv('KAITEN_THUMBNAIL_TIMEOUT_MS');
+    let override = GLib.getenv('MAKIMIRU_THUMBNAIL_TIMEOUT_MS');
     let parsed = override ? parseInt(override, 10) : NaN;
     return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_THUMBNAIL_TIMEOUT_MS;
 }
@@ -80,7 +80,7 @@ const APPARMOR_USERNS_RESTRICT_PATH =
     '/proc/sys/kernel/apparmor_restrict_unprivileged_userns';
 
 function _shouldDisableSandbox() {
-    let override = GLib.getenv('KAITEN_FORCE_SANDBOX');
+    let override = GLib.getenv('MAKIMIRU_FORCE_SANDBOX');
     if (override === '0')
         return true;
     if (override === '1')
@@ -230,7 +230,7 @@ function _startPrivateXServer() {
         proc = launcher.spawnv(['Xvfb', '-displayfd', '1', '-terminate',
             '-screen', '0', '1024x1024x24', '-nolisten', 'tcp']);
     } catch (e) {
-        printerr(`kaiten-thumbnailer: failed to spawn Xvfb: ${e}`);
+        printerr(`makimiru-thumbnailer: failed to spawn Xvfb: ${e}`);
         return null;
     }
 
@@ -243,13 +243,13 @@ function _startPrivateXServer() {
             if (line && /^\d+$/.test(line.trim()))
                 displayNum = line.trim();
         } catch (e) {
-            printerr(`kaiten-thumbnailer: reading Xvfb display number failed: ${e}`);
+            printerr(`makimiru-thumbnailer: reading Xvfb display number failed: ${e}`);
         }
         readDone = true;
     });
 
     if (!_iterateUntil(() => readDone, 5000) || displayNum === null) {
-        printerr('kaiten-thumbnailer: Xvfb did not become ready in time');
+        printerr('makimiru-thumbnailer: Xvfb did not become ready in time');
         proc.force_exit();
         return null;
     }
@@ -312,7 +312,7 @@ function _removeOwnX11Dir() {
 
 function main() {
     if (ARGV.length !== 3) {
-        printerr('usage: kaiten-thumbnailer INPUT OUTPUT SIZE');
+        printerr('usage: makimiru-thumbnailer INPUT OUTPUT SIZE');
         System.exit(1);
         return;
     }
@@ -334,7 +334,7 @@ function main() {
     try {
         info = inputFile.query_info('standard::size', Gio.FileQueryInfoFlags.NONE, null);
     } catch (e) {
-        printerr(`kaiten-thumbnailer: cannot stat input: ${e}`);
+        printerr(`makimiru-thumbnailer: cannot stat input: ${e}`);
         System.exit(1);
         return;
     }
@@ -343,7 +343,7 @@ function main() {
     // precheck. Anything smaller still goes through web/main.js's
     // SPEC-008 preflight caps once the page loads.
     if (info.get_size() >= OVERSIZED_THRESHOLD_BYTES) {
-        printerr('kaiten-thumbnailer: file too large for a quick thumbnail');
+        printerr('makimiru-thumbnailer: file too large for a quick thumbnail');
         System.exit(1);
         return;
     }
@@ -353,7 +353,7 @@ function main() {
 
     const xServer = _startPrivateXServer();
     if (!xServer) {
-        printerr('kaiten-thumbnailer: could not start a private display — cannot render');
+        printerr('makimiru-thumbnailer: could not start a private display — cannot render');
         System.exit(1);
         return;
     }
@@ -361,7 +361,7 @@ function main() {
     try {
         Gtk.init(null);
     } catch (e) {
-        printerr(`kaiten-thumbnailer: Gtk.init failed: ${e}`);
+        printerr(`makimiru-thumbnailer: Gtk.init failed: ${e}`);
         _stopPrivateXServer(xServer);
         System.exit(1);
         return;
@@ -373,11 +373,11 @@ function main() {
     // gate, never left as a disable-only conditional.
     context.set_sandbox_enabled(!_shouldDisableSandbox());
 
-    // Same 'kaiten://' scheme shape as model.js: the reserved
+    // Same 'makimiru://' scheme shape as model.js: the reserved
     // '/model' path always serves *this invocation's* input file,
     // ignoring whatever a request asks for; everything else resolves
     // against the bundled web/ dir with a startsWith guard.
-    context.register_uri_scheme('kaiten', (request) => {
+    context.register_uri_scheme('makimiru', (request) => {
         let path = request.get_path() || '/';
         if (path === '/model') {
             inputFile.read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
@@ -412,7 +412,7 @@ function main() {
     });
 
     const contentManager = new WebKit2.UserContentManager();
-    contentManager.register_script_message_handler('kaiten');
+    contentManager.register_script_message_handler('makimiru');
 
     const view = new WebKit2.WebView({
         web_context: context,
@@ -469,13 +469,13 @@ function main() {
                 try {
                     surface = v.get_snapshot_finish(res);
                 } catch (e) {
-                    printerr(`kaiten-thumbnailer: get_snapshot failed: ${e}`);
+                    printerr(`makimiru-thumbnailer: get_snapshot failed: ${e}`);
                     finishWith(1);
                     return;
                 }
                 let pixbuf = Gdk.pixbuf_get_from_surface(surface, 0, 0, size, size);
                 if (!pixbuf) {
-                    printerr('kaiten-thumbnailer: pixbuf_get_from_surface returned nothing');
+                    printerr('makimiru-thumbnailer: pixbuf_get_from_surface returned nothing');
                     finishWith(1);
                     return;
                 }
@@ -486,7 +486,7 @@ function main() {
                 let tmpPath = `${outputPath}.tmp-${System.getpid ? System.getpid() : GLib.random_int()}`;
                 try {
                     if (!pixbuf.savev(tmpPath, 'png', [], [])) {
-                        printerr('kaiten-thumbnailer: pixbuf save failed');
+                        printerr('makimiru-thumbnailer: pixbuf save failed');
                         finishWith(1);
                         return;
                     }
@@ -495,7 +495,7 @@ function main() {
                         Gio.FileCopyFlags.OVERWRITE, null, null);
                     finishWith(0);
                 } catch (e) {
-                    printerr(`kaiten-thumbnailer: writing output failed: ${e}`);
+                    printerr(`makimiru-thumbnailer: writing output failed: ${e}`);
                     try {
                         Gio.File.new_for_path(tmpPath).delete(null);
                     } catch (e2) { /* nothing to clean up */ }
@@ -505,13 +505,13 @@ function main() {
     }
 
     timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, _thumbnailTimeoutMs(), () => {
-        printerr('kaiten-thumbnailer: render timed out');
+        printerr('makimiru-thumbnailer: render timed out');
         timeoutId = 0;
         finishWith(1);
         return GLib.SOURCE_REMOVE;
     });
 
-    contentManager.connect('script-message-received::kaiten', (cm, jsResult) => {
+    contentManager.connect('script-message-received::makimiru', (cm, jsResult) => {
         let msg;
         try {
             msg = JSON.parse(jsResult.get_js_value().to_string());
@@ -531,22 +531,22 @@ function main() {
                 return GLib.SOURCE_REMOVE;
             });
         } else if (msg.event === 'error') {
-            printerr(`kaiten-thumbnailer: page error: ${msg.message}`);
+            printerr(`makimiru-thumbnailer: page error: ${msg.message}`);
             finishWith(1);
         }
     });
 
     view.connect('load-failed', (v, ev, uri, error) => {
-        printerr(`kaiten-thumbnailer: load-failed: ${error.message}`);
+        printerr(`makimiru-thumbnailer: load-failed: ${error.message}`);
         finishWith(1);
     });
     view.connect('web-process-terminated', (v, reason) => {
-        printerr(`kaiten-thumbnailer: web process terminated: ${reason}`);
+        printerr(`makimiru-thumbnailer: web process terminated: ${reason}`);
         finishWith(1);
     });
 
-    view.load_uri('kaiten://app/viewer.html?model=' +
-        encodeURIComponent('kaiten://app/model') +
+    view.load_uri('makimiru://app/viewer.html?model=' +
+        encodeURIComponent('makimiru://app/model') +
         '&format=' + format);
 
     loop.run();

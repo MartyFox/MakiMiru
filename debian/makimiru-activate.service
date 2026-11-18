@@ -1,15 +1,15 @@
 [Unit]
-Description=Register Kaiten as this user's 3D file previewer
+Description=Register MakiMiru as this user's 3D file previewer
 # Runs every graphical login, not just once (no RemainAfterExit): the
 # script it calls re-copies the per-user D-Bus service file if it is
 # missing, so it self-heals. It does not handle package removal — this
 # unit and its script are deleted by that same removal, so debian/prerm
 # does all removal cleanup. Thumbnails need no per-user step.
-# See /usr/libexec/kaiten-activate-user's own header comment.
+# See /usr/libexec/makimiru-activate-user's own header comment.
 
 [Service]
 Type=oneshot
-ExecStart=/usr/libexec/kaiten-activate-user
+ExecStart=/usr/libexec/makimiru-activate-user
 
 [Install]
 WantedBy=graphical-session.target

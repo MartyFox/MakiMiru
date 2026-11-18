@@ -7,9 +7,9 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$DIR/.." && pwd)"
 . "$DIR/thumbnailer-lib.sh"
 assert_thumbnailer_fresh "$REPO"
-BIN="${KAITEN_TEST_BIN:-$HOME/.local/libexec/kaiten-thumbnailer}"
+BIN="${MAKIMIRU_TEST_BIN:-$HOME/.local/libexec/makimiru-thumbnailer}"
 
-TMP="${TMPDIR:-/tmp}/kaiten-stl"
+TMP="${TMPDIR:-/tmp}/makimiru-stl"
 mkdir -p "$TMP"
 [ -f "$TMP/sphere-20k.stl" ] || python3 "$DIR/make-stl.py" 20000 "$TMP/sphere-20k.stl"
 
@@ -27,7 +27,7 @@ t0=$(date +%s%3N)
 # (that's the point of the test), and under `set -e` a bare non-zero
 # exit here would abort the script before `code=$?` ever ran (same
 # gotcha caught in test-thumbnailer-cli.sh's check_bad).
-if KAITEN_THUMBNAIL_TIMEOUT_MS=50 timeout 5 "$BIN" "$TMP/sphere-20k.stl" "$OUT" 256 >/tmp/thumb-timeout-test.err 2>&1; then
+if MAKIMIRU_THUMBNAIL_TIMEOUT_MS=50 timeout 5 "$BIN" "$TMP/sphere-20k.stl" "$OUT" 256 >/tmp/thumb-timeout-test.err 2>&1; then
     code=0
 else
     code=$?

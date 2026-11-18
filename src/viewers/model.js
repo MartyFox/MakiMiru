@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 Kaiten contributors
+ * Copyright (C) 2026 MakiMiru contributors
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -52,13 +52,13 @@ function _extensionOf(basename) {
 function _logTiming(line) {
     try {
         let path = GLib.build_filenamev(
-            [GLib.get_user_runtime_dir(), 'kaiten-timing.log']);
+            [GLib.get_user_runtime_dir(), 'makimiru-timing.log']);
         let stream = Gio.File.new_for_path(path)
             .append_to(Gio.FileCreateFlags.NONE, null);
         stream.write_all(`${line}\n`, null);
         stream.close(null);
     } catch (e) {
-        logError(e, 'kaiten: failed to write timing log');
+        logError(e, 'makimiru: failed to write timing log');
     }
 }
 
@@ -82,9 +82,9 @@ const APPARMOR_USERNS_RESTRICT_PATH =
 let _cachedShouldDisableSandbox = null;
 
 function _shouldDisableSandbox() {
-    // Dev/test escape hatch: KAITEN_FORCE_SANDBOX=0 forces disabled,
+    // Dev/test escape hatch: MAKIMIRU_FORCE_SANDBOX=0 forces disabled,
     // =1 forces enabled, unset auto-detects via the sysctl below.
-    let override = GLib.getenv('KAITEN_FORCE_SANDBOX');
+    let override = GLib.getenv('MAKIMIRU_FORCE_SANDBOX');
     if (override === '0')
         return true;
     if (override === '1')
@@ -127,7 +127,7 @@ function _inForeignSandbox() {
 
 // Last check: ask bwrap directly whether it can create the namespaces
 // WebKit's sandbox needs (catches userns disabled by other means, e.g.
-// kernel.unprivileged_userns_clone=0). Duplicated in src/kaiten-thumbnailer.in
+// kernel.unprivileged_userns_clone=0). Duplicated in src/makimiru-thumbnailer.in
 // (see test-thumbnailer-sandbox-parity.sh).
 function _sandboxProbeSucceeds() {
     try {
@@ -143,7 +143,7 @@ function _sandboxProbeSucceeds() {
 }
 
 // SPEC-007 regression, fixed here: once the page's model URL became the
-// fixed 'kaiten://app/model' string (no real path/extension in it
+// fixed 'makimiru://app/model' string (no real path/extension in it
 // anymore), web/main.js's extensionOf() could no longer infer format
 // from the URL and silently defaulted every file to STL parsing. The
 // content type that got us dispatched here in the first place
@@ -214,10 +214,10 @@ var Klass = _isAvailable() ? GObject.registerClass({
         // page-side code to name a different path and get a different
         // file. Registered before super._init() — the context must be
         // holding the scheme before it starts serving any resource.
-        context.register_uri_scheme('kaiten', this._onSchemeRequest.bind(this));
+        context.register_uri_scheme('makimiru', this._onSchemeRequest.bind(this));
 
         let contentManager = new WebKit2.UserContentManager();
-        contentManager.register_script_message_handler('kaiten');
+        contentManager.register_script_message_handler('makimiru');
 
         super._init({
             web_context: context,
@@ -227,7 +227,7 @@ var Klass = _isAvailable() ? GObject.registerClass({
         this.connect('context-menu', function() {return true;});
         this.connect('destroy', () => this._clearTimeout());
 
-        contentManager.connect('script-message-received::kaiten',
+        contentManager.connect('script-message-received::makimiru',
                                this._onPageMessage.bind(this));
 
         // SPEC-006: unreadable — WebView failed to even load our page
@@ -257,8 +257,8 @@ var Klass = _isAvailable() ? GObject.registerClass({
 
         this._startLoadTimeout();
         let format = _formatForContentType(fileInfo ? fileInfo.get_content_type() : null);
-        this.load_uri('kaiten://app/viewer.html?model=' +
-            encodeURIComponent('kaiten://app/model') +
+        this.load_uri('makimiru://app/viewer.html?model=' +
+            encodeURIComponent('makimiru://app/model') +
             '&format=' + format);
         // isReady() is deferred to the page's 'rendered' event so the
         // window keeps its loading spinner until the model is on screen.
@@ -317,7 +317,7 @@ var Klass = _isAvailable() ? GObject.registerClass({
         });
     }
 
-    // SPEC-007: 'kaiten://app/model' always serves *this renderer's*
+    // SPEC-007: 'makimiru://app/model' always serves *this renderer's*
     // file, regardless of query string or any other path a compromised
     // or buggy page might request — there is no parameter here that
     // selects which file to read. Everything else under 'app/' is
@@ -374,7 +374,7 @@ var Klass = _isAvailable() ? GObject.registerClass({
         try {
             msg = JSON.parse(jsResult.get_js_value().to_string());
         } catch (e) {
-            logError(e, 'kaiten: bad page message');
+            logError(e, 'makimiru: bad page message');
             return;
         }
 
@@ -390,7 +390,7 @@ var Klass = _isAvailable() ? GObject.registerClass({
             // Raw page exception (msg.message) is logged for developers,
             // never shown to the user — SPEC-006 requires a human message,
             // not an exception dump.
-            log(`kaiten viewer error: ${msg.message}`);
+            log(`makimiru viewer error: ${msg.message}`);
             this._fail('corrupt',
                 _("Couldn't read %s. It may be corrupted or in an unsupported format.")
                     .format(this._basename));

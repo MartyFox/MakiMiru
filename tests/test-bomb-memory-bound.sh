@@ -12,11 +12,11 @@ set -eu
 . "$(dirname "$0")/lib.sh"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-TMP="${TMPDIR:-/tmp}/kaiten-bombs"
+TMP="${TMPDIR:-/tmp}/makimiru-bombs"
 mkdir -p "$TMP"
 [ -f "$TMP/zipbomb.3mf" ] || python3 "$DIR/make-bomb-fixtures.py" "$TMP"
 
-LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kaiten-timing.log"
+LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/makimiru-timing.log"
 log_lines() { [ -f "$LOG" ] && wc -l < "$LOG" || echo 0; }
 
 owner_pid() {

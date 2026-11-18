@@ -5,7 +5,7 @@
 # vertex/face counts; make-bad-fixtures.py sizes/types match intent.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
-TMP="${TMPDIR:-/tmp}/kaiten-fixture-selfcheck"
+TMP="${TMPDIR:-/tmp}/makimiru-fixture-selfcheck"
 mkdir -p "$TMP"
 
 python3 "$DIR/make-3mf.py" "$TMP/single.3mf"

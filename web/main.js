@@ -1,16 +1,16 @@
-// Kaiten 3D viewer page logic. Loaded by viewer.html via dynamic import
+// MakiMiru 3D viewer page logic. Loaded by viewer.html via dynamic import
 // (static module errors bypass window.onerror — keep that bootstrap).
 //
 // Page API (stable — SPEC-005/006 build on it):
-//   window.kaiten.loadModel(source, format?): Promise — source is a URL
+//   window.makimiru.loadModel(source, format?): Promise — source is a URL
 //     string or an ArrayBuffer/TypedArray of model bytes. format is
 //     'stl'|'obj'|'3mf'; inferred from the URL extension when omitted
 //     (bytes with no format default to 'stl', for selftest compatibility).
-//   window.kaiten.getBounds(): {min, max, center, radius, fillRatio} of
+//   window.makimiru.getBounds(): {min, max, center, radius, fillRatio} of
 //     the last model — fillRatio is the bounding-sphere diameter as a
 //     fraction of the viewport's smaller dimension (framing contract: 0.6-0.9).
 //
-// Events posted to the 'kaiten' script message handler (JSON strings):
+// Events posted to the 'makimiru' script message handler (JSON strings):
 //   {event: 'rendered', ms}  {event: 'error', message}
 //   {event: 'selftest-case', case, pass, detail}  (per-case, ?selftest=1)
 //   {event: 'selftest-pass'} {event: 'selftest-fail', message}  (?selftest=1)
@@ -38,7 +38,7 @@ const t0 = performance.now();
 
 function post(msg) {
     try {
-        window.webkit.messageHandlers.kaiten.postMessage(JSON.stringify(msg));
+        window.webkit.messageHandlers.makimiru.postMessage(JSON.stringify(msg));
     } catch (e) {
         console.log('post failed', e);
     }
@@ -129,7 +129,7 @@ function toArrayBuffer(source) {
 }
 
 // Uniform entry point for both code paths (a URL string via our own
-// kaiten:// scheme, or raw bytes for the selftest) — resolving to an
+// makimiru:// scheme, or raw bytes for the selftest) — resolving to an
 // ArrayBuffer *before* handing it to a loader is what makes the
 // preflight checks below possible; loader.loadAsync() alone never gives
 // us the bytes to inspect first.
@@ -345,7 +345,7 @@ function getBounds() {
     return lastBounds;
 }
 
-window.kaiten = { loadModel, getBounds };
+window.makimiru = { loadModel, getBounds };
 
 // 284-byte binary STL tetrahedron: vertices (0,0,0) (1,0,0) (0,1,0) (0,0,1).
 const SELFTEST_STL_B64 =

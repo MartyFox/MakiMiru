@@ -5,11 +5,11 @@ set -eu
 . "$(dirname "$0")/lib.sh"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-TMP="${TMPDIR:-/tmp}/kaiten-stl"
+TMP="${TMPDIR:-/tmp}/makimiru-stl"
 mkdir -p "$TMP"
 [ -f "$TMP/sphere-ascii.stl" ] || python3 "$DIR/make-stl.py" 500 "$TMP/sphere-ascii.stl" --ascii
 
-LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kaiten-timing.log"
+LOG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/makimiru-timing.log"
 log_lines() { [ -f "$LOG" ] && wc -l < "$LOG" || echo 0; }
 
 before="$(log_lines)"

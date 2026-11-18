@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPEC-007 follow-up (external review): live integration test for the
-# 'kaiten://' scheme handler, not just static grep. Loads the real
+# 'makimiru://' scheme handler, not just static grep. Loads the real
 # installed ModelRenderer via its actual GResource and drives real
 # page-side fetch() calls attempting path traversal and reserved-path
 # override, asserting none of them can read an arbitrary host file.
@@ -14,13 +14,13 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # real installed/shipped scheme handler. SPEC-011: override for a .deb
 # install, whose GResource lives under a private prefix instead of
 # $HOME/.local — default matches the dev workflow, unchanged.
-PKGDATADIR="${KAITEN_TEST_PKGDATADIR:-$HOME/.local/share/sushi}"
+PKGDATADIR="${MAKIMIRU_TEST_PKGDATADIR:-$HOME/.local/share/sushi}"
 [ -f "$PKGDATADIR/org.gnome.NautilusPreviewer.src.gresource" ] || {
     echo "FAIL: $PKGDATADIR/org.gnome.NautilusPreviewer.src.gresource not found — run scripts/install-user.sh" >&2
     exit 1
 }
 
-TMP="${TMPDIR:-/tmp}/kaiten-stl"
+TMP="${TMPDIR:-/tmp}/makimiru-stl"
 mkdir -p "$TMP"
 [ -f "$TMP/sphere-ascii.stl" ] || python3 "$DIR/make-stl.py" 500 "$TMP/sphere-ascii.stl" --ascii
 

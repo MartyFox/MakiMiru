@@ -9,11 +9,11 @@
 # Xvfb).
 #
 # Requires: podman, network access for apt inside the container,
-# deb-build/kaiten_*.deb (scripts/build-deb.sh).
+# deb-build/makimiru_*.deb (scripts/build-deb.sh).
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$DIR/.." && pwd)"
-DEB="$(ls "$REPO"/deb-build/kaiten_*_amd64.deb 2>/dev/null | head -n1)"
+DEB="$(ls "$REPO"/deb-build/makimiru_*_amd64.deb 2>/dev/null | head -n1)"
 [ -n "$DEB" ] || { echo "FAIL: no .deb under $REPO/deb-build — run scripts/build-deb.sh" >&2; exit 1; }
 command -v podman >/dev/null || { echo "FAIL: podman not installed" >&2; exit 1; }
 
@@ -22,13 +22,13 @@ trap 'rm -rf "$FIX"' EXIT
 python3 "$DIR/make-stl.py" 2000 "$FIX/sphere.stl"
 python3 "$DIR/make-3mf.py" "$FIX/cube.3mf"
 cp "$DIR/check-thumbnail-png.py" "$FIX/"
-cp "$DEB" "$FIX/kaiten.deb"
+cp "$DEB" "$FIX/makimiru.deb"
 
 podman run --rm -v "$FIX:/fix:Z" docker.io/library/ubuntu:24.04 sh -c '
     set -eu
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq --no-install-recommends /fix/kaiten.deb python3 python3-pil >/tmp/apt.log 2>&1 ||
+    apt-get install -y -qq --no-install-recommends /fix/makimiru.deb python3 python3-pil >/tmp/apt.log 2>&1 ||
         { tail -30 /tmp/apt.log; echo "FAIL: apt install of the .deb failed"; exit 1; }
     echo "ok: installed with apt on a bare ubuntu:24.04"
 
@@ -52,7 +52,7 @@ podman run --rm -v "$FIX:/fix:Z" docker.io/library/ubuntu:24.04 sh -c '
     "
 
     for f in sphere.stl cube.3mf; do
-        timeout 60 /usr/libexec/kaiten-thumbnailer /fix/$f /tmp/$f.png 256 2>/tmp/thumb.err ||
+        timeout 60 /usr/libexec/makimiru-thumbnailer /fix/$f /tmp/$f.png 256 2>/tmp/thumb.err ||
             { cat /tmp/thumb.err; echo "FAIL: thumbnailer failed on $f"; exit 1; }
         python3 /fix/check-thumbnail-png.py /tmp/$f.png 256
     done

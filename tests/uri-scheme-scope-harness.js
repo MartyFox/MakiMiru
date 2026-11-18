@@ -1,7 +1,7 @@
 #!/usr/bin/env gjs
 // SPEC-007 follow-up: loads the *real* installed ModelRenderer (via the
 // installed GResource, not a reimplementation) and drives its actual
-// 'kaiten://' scheme handler with attacker-shaped requests from real
+// 'makimiru://' scheme handler with attacker-shaped requests from real
 // page-side JS, to prove traversal/arbitrary-model-file attempts fail
 // against the live code, not just a static grep.
 //
@@ -60,13 +60,13 @@ let pageReady = false;
 const PROBES = [
     // Path traversal against the asset root ('viewer' — anything other
     // than the reserved '/model' path resolves against webDir).
-    "fetch('kaiten://app/../../../../../../etc/passwd').then(r => r.status).catch(() => 'rejected')",
-    "fetch('kaiten://app/%2e%2e/%2e%2e/etc/passwd').then(r => r.status).catch(() => 'rejected')",
+    "fetch('makimiru://app/../../../../../../etc/passwd').then(r => r.status).catch(() => 'rejected')",
+    "fetch('makimiru://app/%2e%2e/%2e%2e/etc/passwd').then(r => r.status).catch(() => 'rejected')",
     // The reserved model path must ignore whatever it's asked for and
     // only ever return *this renderer's own* file — never a path a page
     // could name to redirect to something else.
-    "fetch('kaiten://app/model?x=/etc/passwd').then(r => r.text()).then(t => t.slice(0, 5))",
-    "fetch('kaiten://app/model/../../../etc/passwd').then(r => r.text()).then(t => t.slice(0, 5)).catch(() => 'rejected')",
+    "fetch('makimiru://app/model?x=/etc/passwd').then(r => r.text()).then(t => t.slice(0, 5))",
+    "fetch('makimiru://app/model/../../../etc/passwd').then(r => r.text()).then(t => t.slice(0, 5)).catch(() => 'rejected')",
 ];
 let probeIndex = 0;
 const results = [];
@@ -89,7 +89,7 @@ function runNextProbe() {
         (async () => {
             let r;
             try { r = await (${script}); } catch (e) { r = 'threw: ' + e; }
-            window.webkit.messageHandlers.kaiten.postMessage(
+            window.webkit.messageHandlers.makimiru.postMessage(
                 JSON.stringify({ event: 'probe-result', index: ${probeIndex}, result: String(r) }));
         })();
     `, null, (view, res) => {
@@ -117,7 +117,7 @@ function finish() {
     loop.quit();
 }
 
-contentManager.connect('script-message-received::kaiten', (cm, jsResult) => {
+contentManager.connect('script-message-received::makimiru', (cm, jsResult) => {
     let msg;
     try {
         msg = JSON.parse(jsResult.get_js_value().to_string());
