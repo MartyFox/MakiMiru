@@ -42,6 +42,23 @@ if [ "$model_path" != "$thumb_path" ] || [ -z "$model_path" ]; then
     fail=1
 fi
 
+# Host finding (2026-11-18): both must also probe bwrap directly — the
+# sysctl alone missed the nested-sandbox case (thumbnailer inside GNOME's
+# factory bwrap) — and the probe command must be identical in both.
+probe_re="\['/usr/bin/bwrap'.*\]"
+model_probe="$(grep -o "$probe_re" "$MODEL" | head -1)"
+thumb_probe="$(grep -o "$probe_re" "$THUMB" | head -1)"
+for f in "$MODEL" "$THUMB"; do
+    if ! grep -q 'restricted || _inForeignSandbox() || !_sandboxProbeSucceeds();' "$f"; then
+        echo "FAIL: _shouldDisableSandbox() in $f does not consult the bwrap probe" >&2
+        fail=1
+    fi
+done
+if [ -z "$model_probe" ] || [ "$model_probe" != "$thumb_probe" ]; then
+    echo "FAIL: bwrap probe command missing or differs between $MODEL and $THUMB" >&2
+    fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
     echo "PASS: test-thumbnailer-sandbox-parity"
 fi

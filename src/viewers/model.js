@@ -93,16 +93,53 @@ function _shouldDisableSandbox() {
     if (_cachedShouldDisableSandbox !== null)
         return _cachedShouldDisableSandbox;
 
+    let restricted = false;
     try {
         let [ok, contents] = GLib.file_get_contents(APPARMOR_USERNS_RESTRICT_PATH);
-        _cachedShouldDisableSandbox =
-            ok && imports.byteArray.toString(contents).trim() === '1';
+        restricted = ok && imports.byteArray.toString(contents).trim() === '1';
     } catch (e) {
-        // Sysctl doesn't exist on this kernel (no AppArmor userns
-        // restriction to work around) — sandbox is safe to leave on.
-        _cachedShouldDisableSandbox = false;
+        // No such sysctl on this kernel: nothing to work around.
     }
+    _cachedShouldDisableSandbox =
+        restricted || _inForeignSandbox() || !_sandboxProbeSucceeds();
     return _cachedShouldDisableSandbox;
+}
+
+// We are already inside someone else's sandbox (e.g. GNOME's thumbnail
+// factory bwrap) when our user namespace is not the initial one. WebKit's
+// own bwrap sandbox assumes a full host view (/sys, /run, namespaces) and
+// aborts the process when nested, in more ways than a probe can mimic
+// (host: "No permissions to create new namespace"; VM: "Can't find source
+// path /sys/block"). Flatpak is excluded: WebKit sandboxes itself there
+// through the portal instead of bwrap.
+function _inForeignSandbox() {
+    if (GLib.file_test('/.flatpak-info', GLib.FileTest.EXISTS))
+        return false;
+    try {
+        let [ok, contents] = GLib.file_get_contents('/proc/self/uid_map');
+        let fields = imports.byteArray.toString(contents).trim().split(/\s+/);
+        return ok && !(fields.length === 3 && fields[0] === '0' &&
+            fields[1] === '0' && fields[2] === '4294967295');
+    } catch (e) {
+        return false;
+    }
+}
+
+// Last check: ask bwrap directly whether it can create the namespaces
+// WebKit's sandbox needs (catches userns disabled by other means, e.g.
+// kernel.unprivileged_userns_clone=0). Duplicated in src/kaiten-thumbnailer.in
+// (see test-thumbnailer-sandbox-parity.sh).
+function _sandboxProbeSucceeds() {
+    try {
+        let [, , , status] = GLib.spawn_sync(null,
+            ['/usr/bin/bwrap', '--unshare-all', '--ro-bind', '/', '/', '/usr/bin/true'],
+            null,
+            GLib.SpawnFlags.STDOUT_TO_DEV_NULL | GLib.SpawnFlags.STDERR_TO_DEV_NULL,
+            null);
+        return status === 0;
+    } catch (e) {
+        return false;
+    }
 }
 
 // SPEC-007 regression, fixed here: once the page's model URL became the

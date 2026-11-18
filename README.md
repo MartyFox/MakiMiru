@@ -113,8 +113,8 @@ The suite needs a logged-in GNOME session, and it installs and removes packages.
 
 ## Performance
 
-- **Preview:** about 750 ms to open an 8 MB STL the first time, and about 250 ms after that. These figures were measured in a VM with software rendering, so a real GPU should be faster. Real-GPU figures haven't been measured yet.
-- **Thumbnails:** about 1 second per file the first time a folder is opened (also measured in a VM), so large folders fill in gradually. After that, GNOME shows cached thumbnails instantly.
+- **Preview:** on a desktop with an AMD Radeon GPU, a small STL (about 100 KB) opens in about 130 ms. In a VM with software rendering, an 8 MB STL took about 750 ms the first time and about 250 ms after that. Large models on a real GPU haven't been timed yet.
+- **Thumbnails:** about 0.6 seconds per file on the same desktop (about 1 second in the VM). A large folder fills in gradually the first time it's opened; after that, GNOME shows the cached thumbnails instantly.
 - **Memory:** a large 3MF can briefly use up to about 500 MB while three.js unpacks it. This happens in the library itself; see `web/vendor/README`.
 
 ## Reporting issues
