@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/makimiru_workmark_light.png" width="480">
-    <img src="docs/images/makimiru_workmark_dark.png" alt="MakiMiru" width="480">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/makimiru_workmark_dark.png" width="480">
+    <img src="docs/images/makimiru_workmark_light.png" alt="MakiMiru" width="480">
   </picture>
 </p>
 
