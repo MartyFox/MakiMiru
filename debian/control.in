@@ -6,7 +6,8 @@ Architecture: amd64
 Depends: gjs, libwebkit2gtk-4.1-0, libgtk-3-0t64, libgtksourceview-4-0, libevdocument3-4t64, libevview3-3t64, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, libgdk-pixbuf-2.0-0, libharfbuzz0b, gir1.2-glib-2.0, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, gir1.2-pango-1.0, gir1.2-webkit2-4.1, gir1.2-gtksource-4, gir1.2-evince-3.0, gir1.2-gstreamer-1.0, gir1.2-gst-plugins-base-1.0, gir1.2-soup-3.0, gstreamer1.0-gtk3, gstreamer1.0-plugins-good, default-dbus-session-bus | dbus-session-bus, shared-mime-info, systemd, xvfb
 Recommends: nautilus
 Suggests: gir1.2-lokdocview-0.1
-Maintainer: Marty Fox
+Maintainer: Marty Fox <9006614+MartyFox@users.noreply.github.com>
+Homepage: https://github.com/MartyFox/kaiten
 Description: Interactive 3D model preview and thumbnails for GNOME
  Kaiten adds spacebar Quick-Look-style preview and file-manager grid
  thumbnails for STL, 3MF, and OBJ 3D model files to GNOME Files

@@ -1,31 +1,132 @@
-# Sushi (Kaiten fork)
+# Kaiten
 
-This is Sushi, a quick previewer for Files (nautilus), the GNOME desktop file manager.
+**3D model previews and thumbnails for GNOME Files.**
 
-**This is the Kaiten fork**, adding an interactive 3D preview (STL/3MF/OBJ) viewer module and a standalone thumbnailer for GNOME Files' grid view, without modifying or replacing the system Sushi package.
+Kaiten lets you see STL, 3MF and OBJ files in GNOME Files (Nautilus) without opening a slicer or CAD tool:
 
-## Installing Kaiten
+- **Spacebar preview:** select a model and press <kbd>Space</kbd> to open an interactive 3D view. Drag to rotate, scroll to zoom, right-drag to pan.
+- **Grid thumbnails:** model files show a rendered thumbnail in icon view instead of a generic icon.
 
-**End users:** `sudo apt install ./kaiten_<version>_amd64.deb` (build one with `scripts/build-deb.sh`) — the only step. Previewer + thumbnailer binaries and a system-wide MIME type declaration install under `/opt/kaiten/` and `/usr`; the spacebar previewer's per-user D-Bus registration activates automatically, unprivileged, on your next graphical login (immediate for an already-open session: `systemctl --user start kaiten-activate.service`). Grid thumbnails work immediately, no login wait. `sudo apt remove kaiten` fully reverses it. See `debian/README` for exactly why the install is shaped this way (two real collisions with the system `gnome-sushi` package, found via testing, not assumed).
+It's built for people with folders full of 3D-printing files who want to find the right one at a glance. The name *kaiten* (回転) means "rotation", as in *kaiten-zushi*, the conveyor-belt sushi bar. It's a nod to the spinnable preview and to the project it's built on, [GNOME Sushi](#built-on-gnome-sushi).
 
-**Developers:** `scripts/container-build.sh` (builds via podman, no host apt changes) then `scripts/install-user.sh` (installs to `~/.local`, reversible via `scripts/uninstall-user.sh`) — the original dev-loop workflow, still the fastest way to iterate on source changes.
+## Requirements
 
-## Using Sushi
+- Ubuntu 24.04 LTS or a derivative (for example Zorin OS 18), on amd64
+- GNOME 46, with GNOME Files (Nautilus) 46
 
-Sushi is a DBus-activated service. For Sushi to popup, applications will have to call the `ShowFile` method on the `org.gnome.NautilusPreviewer2` interface.
+Other GNOME versions aren't supported. The previewer is a fork of Sushi 46, and it needs to match the Nautilus it runs alongside.
 
-If you want to debug Sushi without a calling application, you can use the `sushi <filename>` command.
+## Install
 
-## Testing
+Build the package (this needs [podman](https://podman.io/); nothing is installed on your machine while building):
 
-Run the whole suite with `tests/run-all.sh deb` (against the built `.deb`) or `tests/run-all.sh dev` (against the `~/.local` dev install). It needs a logged-in GNOME session and installs/removes packages, so run it in a disposable VM, not on your daily machine.
+```sh
+scripts/build-deb.sh
+```
 
-## Performance notes
+Then install it:
 
-- The previewer target is roughly 750 ms cold / 250 ms warm for an 8 MB STL. Those figures were measured in a VM with software rendering (llvmpipe); real-GPU numbers are not yet measured.
-- Thumbnails are generated one file at a time, and each one starts its own private Xvfb and WebKit render process, so expect roughly a second per file on first view (measured ~1 s per thumbnail in a software-rendered VM; real-GPU numbers not yet measured). A folder of hundreds of models fills in gradually the first time it is opened; after that GNOME serves the cached PNGs from `~/.cache/thumbnails/` instantly. Files over 100 MB, or over 5 million triangles, are skipped and keep the generic icon.
-- A valid 3MF can make three.js's `3MFLoader` (upstream code, not ours) hold up to ~500 MB while unpacking it — see `web/vendor/README`.
+```sh
+sudo apt install ./deb-build/kaiten_<version>_amd64.deb
+```
+
+- **Thumbnails** work straight away for every user.
+- **Spacebar preview** turns on automatically the next time each user logs in. To turn it on in the session you're already in, run:
+
+  ```sh
+  systemctl --user start kaiten-activate.service
+  ```
+
+The system's own `gnome-sushi` package is left installed and untouched. Kaiten installs alongside it under `/opt/kaiten`.
+
+## Uninstall
+
+```sh
+sudo apt remove kaiten
+```
+
+This removes the thumbnailer and the previewer, and it switches every local user back to the stock Sushi previewer, including users who aren't logged in. Thumbnails already cached in `~/.cache/thumbnails/` stay until GNOME clears them.
+
+## How it works
+
+Kaiten has two parts:
+
+| Part | What it does | Installed to |
+|---|---|---|
+| Previewer | A fork of Sushi 46 with an added 3D viewer (three.js in a WebKitGTK view). Files that aren't 3D models still preview exactly as they do in stock Sushi. | `/opt/kaiten/previewer` |
+| Thumbnailer | A standalone renderer that GNOME's thumbnail service runs for each model file. It brings its own private, headless X server, because GNOME runs thumbnailers with no display. | `/usr/libexec/kaiten-thumbnailer` |
+
+A note on how the preview is switched on: GNOME Files asks D-Bus for "the previewer". Kaiten takes that role for each user by writing one small file, `~/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service`. A systemd user service writes it at login. The file is marked as Kaiten's, so uninstalling only ever removes Kaiten's own file. Remove that file and the stock Sushi takes over again. `debian/README` explains why the install is laid out this way.
+
+**Limits:** files over 100 MB or over 5 million triangles aren't rendered. Previews show an error message instead, and thumbnails keep the generic icon.
+
+## Built on GNOME Sushi
+
+Kaiten is a fork of **[Sushi](https://gitlab.gnome.org/GNOME/sushi)**, the GNOME quick previewer by Cosimo Cecchi and the GNOME contributors. Sushi supplies everything except the 3D work: the previewer window, the D-Bus service, and the viewers for images, PDFs, text, audio, video and fonts.
+
+**What Kaiten adds**
+- `src/viewers/model.js`: the 3D viewer module.
+- `web/`: the WebGL page it hosts (three.js), plus vendored libraries.
+- `src/kaiten-thumbnailer.in`: the thumbnailer.
+- `debian/` and `scripts/`: packaging that installs alongside the system Sushi.
+- `tests/`: the test suite.
+
+**What Kaiten changes in Sushi's own code** is kept deliberately small:
+- `src/ui/mimeHandler.js`: routes STL, 3MF and OBJ files to the new viewer.
+- `src/ui/mainWindow.js`: a one-line change.
+- The build files, needed to ship the new pieces.
+
+**Tracking upstream:** this repository keeps Sushi's full history. Kaiten's work sits on top of the `Release 46.0` tag, so `git diff 46.0` shows everything Kaiten changed. To pull in later Sushi fixes:
+
+```sh
+git remote add upstream https://gitlab.gnome.org/GNOME/sushi.git   # once
+git fetch upstream
+git merge upstream/gnome-46
+```
+
+Kaiten is not an official GNOME project. Please don't report Kaiten problems to GNOME (see [Reporting issues](#reporting-issues)).
+
+To run the previewer directly on a file (handy for debugging):
+
+```sh
+/opt/kaiten/previewer/bin/sushi path/to/model.stl
+```
+
+## Development
+
+The quickest way to try code changes, without building a `.deb`:
+
+```sh
+scripts/container-build.sh   # build inside podman; nothing installed on the host
+scripts/install-user.sh      # install to ~/.local for your user only
+scripts/uninstall-user.sh    # undo
+```
+
+### Testing
+
+```sh
+tests/run-all.sh deb   # test the built .deb (install, preview, thumbnails, removal)
+tests/run-all.sh dev   # test the ~/.local developer install
+```
+
+The suite needs a logged-in GNOME session, and it installs and removes packages. **Run it in a disposable VM, not on your everyday machine.** `tests/test-deb-clean-install.sh` also installs the package into a bare Ubuntu 24.04 container, to check that the package's dependency list is complete.
+
+## Performance
+
+- **Preview:** about 750 ms to open an 8 MB STL the first time, and about 250 ms after that. These figures were measured in a VM with software rendering, so a real GPU should be faster. Real-GPU figures haven't been measured yet.
+- **Thumbnails:** about 1 second per file the first time a folder is opened (also measured in a VM), so large folders fill in gradually. After that, GNOME shows cached thumbnails instantly.
+- **Memory:** a large 3MF can briefly use up to about 500 MB while three.js unpacks it. This happens in the library itself; see `web/vendor/README`.
 
 ## Reporting issues
 
-Report Kaiten issues (3D preview, thumbnails, packaging) to this fork's own issue tracker, not to GNOME. Only report a non-3D Sushi bug to GNOME if it also happens with the stock `gnome-sushi` package and Kaiten removed (`sudo apt remove kaiten`).
+Report problems with 3D previews, thumbnails or packaging on [Kaiten's issue tracker](https://github.com/MartyFox/kaiten/issues).
+
+If something unrelated to 3D models breaks, such as a PDF or image preview, check whether it also happens with stock Sushi. Run `sudo apt remove kaiten` and try again. Only report it to [GNOME Sushi](https://gitlab.gnome.org/GNOME/sushi/-/issues) if it does.
+
+## License
+
+- Kaiten, like Sushi, is licensed under the **GNU General Public License v2.0 or later**. See `COPYING`.
+- The bundled third-party libraries are MIT-licensed:
+  - [three.js](https://threejs.org/) 0.185.1
+  - [fflate](https://github.com/101arrowz/fflate)
+  - Their licence texts are in `web/vendor/`.
