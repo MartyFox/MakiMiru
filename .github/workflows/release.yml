@@ -1,0 +1,52 @@
+# Builds the .deb, checks it installs and renders on a bare Ubuntu 24.04,
+# and for a makimiru-v* tag publishes it as a GitHub Release.
+#
+#   git tag makimiru-v1.1.0 && git push origin makimiru-v1.1.0
+#
+# Run by hand (workflow_dispatch) to build and test a branch without
+# publishing; the .deb is then kept as a workflow artifact.
+
+name: Release .deb
+
+on:
+  push:
+    tags: ['makimiru-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write # gh release create
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # build-deb.sh derives the version from tags
+          persist-credentials: false
+
+      - name: Build .deb
+        run: ./scripts/build-deb.sh
+
+      - name: Install and render on a bare Ubuntu 24.04
+        run: sh tests/test-deb-clean-install.sh
+
+      - name: Keep the .deb
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: makimiru-deb
+          path: deb-build/makimiru_*_amd64.deb
+          retention-days: 14
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/makimiru-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" deb-build/makimiru_*_amd64.deb \
+            --verify-tag --generate-notes \
+            --title "MakiMiru ${GITHUB_REF_NAME#makimiru-v}"

@@ -259,7 +259,7 @@ var Klass = _isAvailable() ? GObject.registerClass({
         let format = _formatForContentType(fileInfo ? fileInfo.get_content_type() : null);
         this.load_uri('makimiru://app/viewer.html?model=' +
             encodeURIComponent('makimiru://app/model') +
-            '&format=' + format);
+            '&format=' + format + '&ui=1');
         // isReady() is deferred to the page's 'rendered' event so the
         // window keeps its loading spinner until the model is on screen.
     }
@@ -386,6 +386,10 @@ var Klass = _isAvailable() ? GObject.registerClass({
             _logTiming(`${new Date().toISOString()} rendered ` +
                        `${Math.round(msg.ms)}ms ext=${this._logExt} size=${this._logSize}`);
             this.isReady();
+            // Keys go to the focused widget: take focus so the page's view
+            // shortcuts (1/2/3/0/R/W/I/H) work without clicking first.
+            // Sushi's own window shortcuts are accelerators and still win.
+            this.grab_focus();
         } else if (msg.event === 'error') {
             // Raw page exception (msg.message) is logged for developers,
             // never shown to the user — SPEC-006 requires a human message,

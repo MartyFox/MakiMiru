@@ -1,0 +1,48 @@
+# MakiMiru: "Generate 3D Thumbnails" in GNOME Files' right-click menu.
+#
+# Loaded by nautilus-python (package python3-nautilus) from
+# share/nautilus-python/extensions/. Offered on folders (selected folders,
+# or the background of the folder being viewed); runs makimiru-pregen in
+# the background and lets it post a desktop notification when done.
+
+import gi
+
+gi.require_version('Nautilus', '4.0')
+from gi.repository import Gio, GObject, Nautilus  # noqa: E402
+
+PREGEN = '@bindir@/makimiru-pregen'
+
+
+def _local_paths(files):
+    """Paths of the given Nautilus files, or [] unless all are local folders."""
+    paths = []
+    for f in files:
+        location = f.get_location()
+        path = location.get_path() if location else None
+        if not f.is_directory() or not path:
+            return []
+        paths.append(path)
+    return paths
+
+
+class MakiMiruPregen(GObject.GObject, Nautilus.MenuProvider):
+    def _menu(self, paths):
+        if not paths:
+            return []
+        item = Nautilus.MenuItem(
+            name='MakiMiru::GenerateThumbnails',
+            label='Generate 3D Thumbnails',
+            tip='Create thumbnails for every STL, 3MF and OBJ file in this folder and its subfolders',
+        )
+        item.connect('activate', self._run, paths)
+        return [item]
+
+    def _run(self, _item, paths):
+        proc = Gio.Subprocess.new([PREGEN, '--notify', '--', *paths], Gio.SubprocessFlags.NONE)
+        proc.wait_async(None, None)  # reap it when it finishes
+
+    def get_file_items(self, files):
+        return self._menu(_local_paths(files))
+
+    def get_background_items(self, folder):
+        return self._menu(_local_paths([folder]))

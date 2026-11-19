@@ -45,3 +45,15 @@ configure_file(
   configuration: conf,
   install_dir: join_paths(datadir, 'thumbnailers'),
 )
+
+# "Generate 3D Thumbnails" in Files' folder right-click menu, via
+# nautilus-python (python3-nautilus); does nothing if that isn't installed.
+nautilus_conf = configuration_data()
+nautilus_conf.set('bindir', bindir)
+configure_file(
+  input: 'makimiru-nautilus.py.in',
+  output: 'makimiru-nautilus.py',
+  configuration: nautilus_conf,
+  install: get_option('pregen'),
+  install_dir: join_paths(datadir, 'nautilus-python', 'extensions'),
+)
