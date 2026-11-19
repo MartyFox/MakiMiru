@@ -28,7 +28,13 @@
 <body>
 <canvas id="canvas"></canvas>
 <script>
+  // Shared with main.js (its post()). ?job=N, set by the thumbnailer, is
+  // echoed on every message so a reused WebView can tell this page's
+  // messages from a previous page's.
+  var __job = new URLSearchParams(location.search).get('job');
   function __post(msg) {
+      if (__job)
+          msg.job = __job;
       try {
           window.webkit.messageHandlers.makimiru.postMessage(JSON.stringify(msg));
       } catch (e) {

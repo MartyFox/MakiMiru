@@ -57,7 +57,10 @@ view.connect('load-failed', (v, ev, uri, error) => {
     return false;
 });
 
-view.load_uri(Gio.File.new_for_path(ARGV[0]).get_uri() + '?selftest=1');
+// MAKIMIRU_SELFTEST_QUERY appends to the query, e.g. '&ui=1' to also
+// selftest the previewer's overlay and keyboard shortcuts.
+view.load_uri(Gio.File.new_for_path(ARGV[0]).get_uri() + '?selftest=1' +
+    (GLib.getenv('MAKIMIRU_SELFTEST_QUERY') || ''));
 
 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 15000, () => {
     print('timeout');

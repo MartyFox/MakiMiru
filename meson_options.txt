@@ -11,3 +11,7 @@ option('profile',
 	choices: ['default', 'development'],
 	value: 'default',
 	description: 'Build with default or development App Id.')
+option('pregen',
+	type: 'boolean',
+	value: true,
+	description: 'Install makimiru-pregen and the Files extension (off for the .deb previewer-only pass).')

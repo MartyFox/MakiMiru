@@ -1,0 +1,10 @@
+#!/bin/sh
+# makimiru-pregen: build 3D-model thumbnails for whole folders ahead of
+# time, straight into GNOME's thumbnail cache, so they're already there
+# when the folder is opened in Files.
+#
+#   makimiru-pregen [--size normal|large|x-large|xx-large] [--notify] FOLDER...
+#
+# The work is done by the thumbnailer's batch mode, which renders every
+# file with one private display and one WebKit process.
+exec "@libexecdir@/makimiru-thumbnailer" --pregen "$@"

@@ -191,6 +191,17 @@ function _assetMimeType(path) {
 // stdout (-displayfd 1) only once it accepts connections, and it is
 // stopped with SIGTERM so it cleans up after itself.
 
+// makimiru-pregen runs in a terminal, where Xvfb's keymap warnings and
+// Mesa's EGL probing messages (inherited by WebKit's web process) are just
+// noise; real failures are still reported per file. The single-thumbnail
+// path keeps them: they were how the sandbox problems got diagnosed.
+let _quiet = false;
+
+function _enableQuietMode() {
+    _quiet = true;
+    GLib.setenv('EGL_LOG_LEVEL', 'fatal', false);
+}
+
 // Iterates ctx (default: the default main context) until done() or the
 // deadline — used outside the real main loop, where we still need async
 // subprocess I/O to make progress.
@@ -211,7 +222,8 @@ function _startPrivateXServer() {
     // keeping visible rather than swallowed. stdout is piped: it only
     // carries the -displayfd readiness line.
     const launcher = new Gio.SubprocessLauncher({
-        flags: Gio.SubprocessFlags.STDOUT_PIPE,
+        flags: Gio.SubprocessFlags.STDOUT_PIPE |
+            (_quiet ? Gio.SubprocessFlags.STDERR_SILENCE : 0),
     });
     let proc;
     try {
@@ -310,248 +322,499 @@ function _removeOwnX11Dir() {
     } catch (e) { /* absent, not ours, or not empty — leave it */ }
 }
 
-function main() {
-    if (ARGV.length !== 3) {
-        printerr('usage: makimiru-thumbnailer INPUT OUTPUT SIZE');
-        System.exit(1);
+// ---- Rendering ------------------------------------------------------------
+// One offscreen WebView renders any number of models in turn. The single-
+// file CLI uses it once; --pregen reuses it for a whole folder — one Xvfb
+// and one WebKit web process for every file, instead of starting both per
+// thumbnail (that start-up is most of a thumbnail's time). The makimiru://
+// scheme serves the bundled web/ assets plus the *current* job's file at
+// the reserved /model path; no request parameter can pick a different file.
+
+function _serveModel(request, file) {
+    if (!file) {
+        request.finish_error(new GLib.Error(
+            Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'no model'));
         return;
     }
-    const [inputArg, outputPath, sizeArg] = ARGV;
-
-    // tumbler's Thumbnail Managing Standard entries can use either a
-    // local path (%i) or a URI (%u) depending on how the .thumbnailer
-    // Exec= line is written — accept either so this doesn't silently
-    // break if that convention differs across tumbler versions/distros.
-    const inputFile = inputArg.includes('://')
-        ? Gio.File.new_for_uri(inputArg)
-        : Gio.File.new_for_path(inputArg);
-
-    let size = parseInt(sizeArg, 10);
-    if (!Number.isFinite(size) || size <= 0)
-        size = 256;
-
-    let info;
-    try {
-        info = inputFile.query_info('standard::size', Gio.FileQueryInfoFlags.NONE, null);
-    } catch (e) {
-        printerr(`makimiru-thumbnailer: cannot stat input: ${e}`);
-        System.exit(1);
-        return;
-    }
-    // Same threshold as the previewer — checked here, before
-    // WebKit/Gtk are ever touched, exactly like model.js's synchronous
-    // precheck. Anything smaller still goes through web/main.js's
-    // SPEC-008 preflight caps once the page loads.
-    if (info.get_size() >= OVERSIZED_THRESHOLD_BYTES) {
-        printerr('makimiru-thumbnailer: file too large for a quick thumbnail');
-        System.exit(1);
-        return;
-    }
-
-    const webDir = GLib.build_filenamev([pkg.pkgdatadir, 'web']);
-    const format = _formatForPath(inputFile.get_basename() || inputArg);
-
-    const xServer = _startPrivateXServer();
-    if (!xServer) {
-        printerr('makimiru-thumbnailer: could not start a private display — cannot render');
-        System.exit(1);
-        return;
-    }
-
-    try {
-        Gtk.init(null);
-    } catch (e) {
-        printerr(`makimiru-thumbnailer: Gtk.init failed: ${e}`);
-        _stopPrivateXServer(xServer);
-        System.exit(1);
-        return;
-    }
-
-    const context = new WebKit2.WebContext();
-    // External review lesson (SPEC-007): WebKitGTK's sandbox defaults to
-    // *off* on a fresh context — this call must always run, negating the
-    // gate, never left as a disable-only conditional.
-    context.set_sandbox_enabled(!_shouldDisableSandbox());
-
-    // Same 'makimiru://' scheme shape as model.js: the reserved
-    // '/model' path always serves *this invocation's* input file,
-    // ignoring whatever a request asks for; everything else resolves
-    // against the bundled web/ dir with a startsWith guard.
-    context.register_uri_scheme('makimiru', (request) => {
-        let path = request.get_path() || '/';
-        if (path === '/model') {
-            inputFile.read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
-                try {
-                    let stream = f.read_finish(res);
-                    request.finish(stream, -1, 'application/octet-stream');
-                } catch (e) {
-                    request.finish_error(new GLib.Error(
-                        Gio.IOErrorEnum, Gio.IOErrorEnum.FAILED, 'model read failed'));
-                }
-            });
-            return;
-        }
-        let rel = path.replace(/^\/+/, '');
-        if (rel === '')
-            rel = 'viewer.html';
-        let target = GLib.build_filenamev([webDir, rel]);
-        if (target !== webDir && !target.startsWith(webDir + '/')) {
+    file.read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+        try {
+            request.finish(f.read_finish(res), -1, 'application/octet-stream');
+        } catch (e) {
             request.finish_error(new GLib.Error(
-                Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'out of bounds'));
-            return;
+                Gio.IOErrorEnum, Gio.IOErrorEnum.FAILED, 'model read failed'));
         }
-        Gio.File.new_for_path(target).read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+    });
+}
+
+function _serveAsset(request, webDir, path) {
+    let rel = path.replace(/^\/+/, '');
+    if (rel === '')
+        rel = 'viewer.html';
+    const target = GLib.build_filenamev([webDir, rel]);
+    if (target !== webDir && !target.startsWith(webDir + '/')) {
+        request.finish_error(new GLib.Error(
+            Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'out of bounds'));
+        return;
+    }
+    Gio.File.new_for_path(target).read_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+        try {
+            request.finish(f.read_finish(res), -1, _assetMimeType(target));
+        } catch (e) {
+            request.finish_error(new GLib.Error(
+                Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'asset not found'));
+        }
+    });
+}
+
+// A render job finishes exactly once: with a pixbuf, a failure reason, or
+// a timeout of its own (so one bad file can't stall a whole batch).
+// `permanent` marks failures that retrying the same file won't fix.
+// The id goes into the page URL and comes back on every page message, so
+// a message from the previous job's page is never taken for this job's.
+let _nextJobId = 1;
+
+function _newJob(file, done) {
+    const job = {id: String(_nextJobId++), file, finished: false, timeoutId: 0};
+    job.finish = (pixbuf, reason, permanent = false) => {
+        if (job.finished)
+            return;
+        job.finished = true;
+        if (job.timeoutId)
+            GLib.source_remove(job.timeoutId);
+        done(pixbuf, reason, permanent);
+    };
+    job.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, _thumbnailTimeoutMs(), () => {
+        job.timeoutId = 0;
+        job.finish(null, 'render timed out');
+        return GLib.SOURCE_REMOVE;
+    });
+    return job;
+}
+
+// WebKit's own snapshot API, not Gtk.OffscreenWindow.get_pixbuf(): the
+// latter silently captured a blank frame inside GNOME's thumbnail sandbox
+// (SPEC-011). The 100 ms settle before calling this is also deliberate:
+// capturing immediately on 'rendered' can catch a not-yet-composited frame.
+function _snapshot(view, size, job) {
+    if (job.finished)
+        return;
+    view.get_snapshot(WebKit2.SnapshotRegion.VISIBLE, WebKit2.SnapshotOptions.NONE, null,
+        (v, res) => {
             try {
-                let stream = f.read_finish(res);
-                request.finish(stream, -1, _assetMimeType(target));
+                const surface = v.get_snapshot_finish(res);
+                const pixbuf = Gdk.pixbuf_get_from_surface(surface, 0, 0, size, size);
+                job.finish(pixbuf, pixbuf ? null : 'snapshot produced no image');
             } catch (e) {
-                request.finish_error(new GLib.Error(
-                    Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'asset not found'));
+                job.finish(null, `get_snapshot failed: ${e}`);
             }
         });
-    });
+}
 
-    const contentManager = new WebKit2.UserContentManager();
-    contentManager.register_script_message_handler('makimiru');
-
+function _createView(context, contentManager, size) {
     const view = new WebKit2.WebView({
         web_context: context,
         user_content_manager: contentManager,
     });
     view.set_size_request(size, size);
-
     const win = new Gtk.OffscreenWindow();
     win.add(view);
     win.show_all();
+    return view;
+}
 
-    const loop = GLib.MainLoop.new(null, false);
-    let finished = false;
-    let exitCode = 1;
-    let timeoutId = 0;
+// The job id a makimiru:// URI carries (?job= / &job=), or null.
+function _jobIdOf(uri) {
+    const m = /[?&]job=(\d+)/.exec(uri || '');
+    return m ? m[1] : null;
+}
 
-    function finishWith(code) {
-        if (finished)
-            return;
-        finished = true;
-        exitCode = code;
-        if (timeoutId) {
-            GLib.source_remove(timeoutId);
-            timeoutId = 0;
-        }
-        // Every exit path (success, page error, load-failed, web-process
-        // crash, or our own timeout) funnels through here; the private
-        // Xvfb is stopped once, after loop.run() returns, below.
-        loop.quit();
-    }
-
-    // Real bug, found via a solid-black-thumbnail screenshot and a live
-    // strace investigation, not any automated test: capturing via
-    // Gtk.OffscreenWindow.get_pixbuf() produced a validly-sized PNG
-    // containing only the page's own CSS background color — no
-    // rendered geometry — specifically when running inside GNOME's
-    // bwrap thumbnail sandbox (confirmed working correctly outside it,
-    // both in the original SPEC-010 spike and in direct/manual
-    // invocation with this exact codebase). /dev/shm was ruled out
-    // (confirmed writable inside the sandbox via a live diagnostic).
-    // The remaining, unconfirmed but well-fitting theory: something
-    // about WebKit's own multi-process frame handoff to the GTK
-    // offscreen-window compositing path degrades inside the sandbox's
-    // namespace isolation, even though WebKit renders internally fine.
-    // Fix: use WebKitWebView.get_snapshot() instead — WebKit's own
-    // dedicated "give me the rendered page as an image" API, which
-    // doesn't route through GtkOffscreenWindow's generic widget
-    // compositing at all. More direct, and (confirmed by testing)
-    // avoids whatever the compositing-path problem was.
-    function writeSnapshotAndExit() {
-        view.get_snapshot(WebKit2.SnapshotRegion.VISIBLE, WebKit2.SnapshotOptions.NONE, null,
-            (v, res) => {
-                let surface;
-                try {
-                    surface = v.get_snapshot_finish(res);
-                } catch (e) {
-                    printerr(`makimiru-thumbnailer: get_snapshot failed: ${e}`);
-                    finishWith(1);
-                    return;
-                }
-                let pixbuf = Gdk.pixbuf_get_from_surface(surface, 0, 0, size, size);
-                if (!pixbuf) {
-                    printerr('makimiru-thumbnailer: pixbuf_get_from_surface returned nothing');
-                    finishWith(1);
-                    return;
-                }
-                // Atomic write: save to a temp path in the same
-                // directory, then move into place — tumbler (or
-                // anything else watching the output path) never
-                // observes a partially-written PNG.
-                let tmpPath = `${outputPath}.tmp-${System.getpid ? System.getpid() : GLib.random_int()}`;
-                try {
-                    if (!pixbuf.savev(tmpPath, 'png', [], [])) {
-                        printerr('makimiru-thumbnailer: pixbuf save failed');
-                        finishWith(1);
-                        return;
-                    }
-                    Gio.File.new_for_path(tmpPath).move(
-                        Gio.File.new_for_path(outputPath),
-                        Gio.FileCopyFlags.OVERWRITE, null, null);
-                    finishWith(0);
-                } catch (e) {
-                    printerr(`makimiru-thumbnailer: writing output failed: ${e}`);
-                    try {
-                        Gio.File.new_for_path(tmpPath).delete(null);
-                    } catch (e2) { /* nothing to clean up */ }
-                    finishWith(1);
-                }
-            });
-    }
-
-    timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, _thumbnailTimeoutMs(), () => {
-        printerr('makimiru-thumbnailer: render timed out');
-        timeoutId = 0;
-        finishWith(1);
-        return GLib.SOURCE_REMOVE;
-    });
-
+// Routes the page's messages and WebView failures to the current job. All
+// three channels (messages, load-failed, /model requests in
+// _createRenderer) are matched by job id, so nothing from a previous job's
+// page can reach the current one.
+function _connectJobEvents(view, contentManager, size, currentJob) {
     contentManager.connect('script-message-received::makimiru', (cm, jsResult) => {
+        const job = currentJob();
         let msg;
         try {
             msg = JSON.parse(jsResult.get_js_value().to_string());
         } catch (e) {
             return;
         }
-        if (finished)
+        if (!job || msg.job !== job.id)
             return;
         if (msg.event === 'rendered') {
-            // One extra frame's grace before snapshotting — 'rendered'
-            // fires right after the page's own renderer.render() call,
-            // but WebKit's own internal compositing is a separate step
-            // (confirmed necessary during the rendering-approach spike;
-            // still needed with get_snapshot()).
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
-                writeSnapshotAndExit();
+                _snapshot(view, size, job);
                 return GLib.SOURCE_REMOVE;
             });
         } else if (msg.event === 'error') {
-            printerr(`makimiru-thumbnailer: page error: ${msg.message}`);
-            finishWith(1);
+            // badFile: the page read the file but can't use its contents,
+            // so a retry would fail too. Anything else (no WebGL, read
+            // error, page script failure) may be the environment.
+            job.finish(null, `page error: ${msg.message}`, msg.badFile === true);
         }
     });
-
     view.connect('load-failed', (v, ev, uri, error) => {
-        printerr(`makimiru-thumbnailer: load-failed: ${error.message}`);
-        finishWith(1);
+        const job = currentJob();
+        if (job && _jobIdOf(uri) === job.id)
+            job.finish(null, `load-failed: ${error.message}`);
+        return false;
     });
     view.connect('web-process-terminated', (v, reason) => {
-        printerr(`makimiru-thumbnailer: web process terminated: ${reason}`);
-        finishWith(1);
+        currentJob()?.finish(null, `web process terminated: ${reason}`);
+    });
+}
+
+function _createRenderer(size) {
+    const webDir = GLib.build_filenamev([pkg.pkgdatadir, 'web']);
+    const context = new WebKit2.WebContext();
+    context.set_sandbox_enabled(!_shouldDisableSandbox());
+    let job = null;
+    context.register_uri_scheme('makimiru', (request) => {
+        const path = request.get_path() || '/';
+        if (path === '/model')
+            _serveModel(request, job && _jobIdOf(request.get_uri()) === job.id ? job.file : null);
+        else
+            _serveAsset(request, webDir, path);
     });
 
-    view.load_uri('makimiru://app/viewer.html?model=' +
-        encodeURIComponent('makimiru://app/model') +
-        '&format=' + format);
+    const contentManager = new WebKit2.UserContentManager();
+    contentManager.register_script_message_handler('makimiru');
+    const view = _createView(context, contentManager, size);
+    _connectJobEvents(view, contentManager, size, () => job);
 
+    return {
+        // Calls done(pixbuf) or done(null, reason, permanent) exactly once.
+        // A finished job ignores late events, so it can stay current until
+        // the next.
+        render(file, done) {
+            job = _newJob(file, done);
+            view.load_uri('makimiru://app/viewer.html?model=' +
+                encodeURIComponent(`makimiru://app/model?job=${job.id}`) +
+                '&format=' + _formatForPath(file.get_basename() || '') +
+                '&job=' + job.id);
+        },
+    };
+}
+
+// Private X server + GTK, or null (reason already printed).
+function _startDisplay() {
+    const xServer = _startPrivateXServer();
+    if (!xServer) {
+        printerr('makimiru-thumbnailer: could not start a private display — cannot render');
+        return null;
+    }
+    try {
+        Gtk.init(null);
+    } catch (e) {
+        printerr(`makimiru-thumbnailer: Gtk.init failed: ${e}`);
+        _stopPrivateXServer(xServer);
+        return null;
+    }
+    return xServer;
+}
+
+// Runs start(renderer, quit) inside a main loop on a private display and
+// returns the code passed to quit(). start runs from idle, so it may call
+// quit() straight away without the quit being lost before loop.run().
+function _runRenderLoop(size, start) {
+    const xServer = _startDisplay();
+    if (!xServer)
+        return 1;
+    const loop = GLib.MainLoop.new(null, false);
+    let exitCode = 1;
+    const renderer = _createRenderer(size);
+    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        start(renderer, (code) => {
+            exitCode = code;
+            loop.quit();
+        });
+        return GLib.SOURCE_REMOVE;
+    });
     loop.run();
     _stopPrivateXServer(xServer);
-    System.exit(exitCode);
+    return exitCode;
+}
+
+function _sizeProblem(bytes) {
+    return bytes >= OVERSIZED_THRESHOLD_BYTES ? 'file too large for a quick thumbnail' : null;
+}
+
+// Returns null when the file can be rendered, else why not.
+function _cannotRender(file) {
+    try {
+        return _sizeProblem(
+            file.query_info('standard::size', Gio.FileQueryInfoFlags.NONE, null).get_size());
+    } catch (e) {
+        return `cannot stat input: ${e}`;
+    }
+}
+
+// ---- Single thumbnail (GNOME's thumbnail factory, tumbler) -----------------
+
+// Atomic write: whatever reads outputPath (GNOME's thumbnail factory, in
+// real use) never observes a partial file.
+function _savePngAtomic(pixbuf, outputPath) {
+    const tmpPath = `${outputPath}.tmp-${GLib.random_int()}`;
+    try {
+        if (!pixbuf.savev(tmpPath, 'png', [], []))
+            throw new Error('pixbuf save failed');
+        Gio.File.new_for_path(tmpPath).move(
+            Gio.File.new_for_path(outputPath), Gio.FileCopyFlags.OVERWRITE, null, null);
+        return true;
+    } catch (e) {
+        printerr(`makimiru-thumbnailer: writing output failed: ${e}`);
+        try {
+            Gio.File.new_for_path(tmpPath).delete(null);
+        } catch (e2) { /* nothing to clean up */ }
+        return false;
+    }
+}
+
+function _thumbnailOne(args) {
+    if (args.length !== 3) {
+        printerr('usage: makimiru-thumbnailer INPUT OUTPUT SIZE');
+        return 1;
+    }
+    const [inputArg, outputPath, sizeArg] = args;
+    // %i (path) or %u (URI), depending on the .thumbnailer Exec= line.
+    const inputFile = inputArg.includes('://')
+        ? Gio.File.new_for_uri(inputArg)
+        : Gio.File.new_for_path(inputArg);
+    let size = parseInt(sizeArg, 10);
+    if (!Number.isFinite(size) || size <= 0)
+        size = 256;
+
+    const reason = _cannotRender(inputFile);
+    if (reason) {
+        printerr(`makimiru-thumbnailer: ${reason}`);
+        return 1;
+    }
+    return _runRenderLoop(size, (renderer, quit) => {
+        renderer.render(inputFile, (pixbuf, why) => {
+            if (!pixbuf) {
+                printerr(`makimiru-thumbnailer: ${why}`);
+                quit(1);
+                return;
+            }
+            quit(_savePngAtomic(pixbuf, outputPath) ? 0 : 1);
+        });
+    });
+}
+
+// ---- Batch pre-generation (makimiru-pregen) ---------------------------------
+// Fills GNOME's own thumbnail cache ahead of time, so a big folder of
+// models opens with every thumbnail already there. Saving goes through
+// GnomeDesktop.DesktopThumbnailFactory, the same code Files uses, so the
+// PNGs land at the path Files looks up, with the Thumb::URI/MTime metadata
+// it checks — and failures are recorded the way Files records them, so it
+// won't retry them either. Runs in the user's session, not GNOME's
+// thumbnail sandbox; WebKit's own sandbox is still applied when available
+// (_shouldDisableSandbox).
+
+const PREGEN_USAGE =
+    'usage: makimiru-pregen [--size normal|large|x-large|xx-large] [--notify] FOLDER...';
+// Files 46 uses "large" (256 px) at default zoom; bigger zoom levels and
+// HiDPI screens use the larger sizes.
+const PREGEN_SIZES = {
+    'normal': ['NORMAL', 128], 'large': ['LARGE', 256],
+    'x-large': ['XLARGE', 512], 'xx-large': ['XXLARGE', 1024],
+};
+const MODEL_FILE_RE = /\.(stl|3mf|obj)$/i;
+
+function _parsePregenArgs(args) {
+    const opts = {size: 'large', notify: false, paths: []};
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--') {
+            opts.paths.push(...args.slice(i + 1));
+            break;
+        }
+        if (arg === '--size' && i + 1 < args.length)
+            opts.size = args[++i];
+        else if (arg === '--notify')
+            opts.notify = true;
+        else if (arg.startsWith('-'))
+            return null;
+        else
+            opts.paths.push(arg);
+    }
+    return PREGEN_SIZES[opts.size] && opts.paths.length ? opts : null;
+}
+
+const COLLECT_ATTRS =
+    'standard::name,standard::type,standard::is-hidden,standard::size,time::modified';
+
+function _visitModels(file, info, found) {
+    const type = info.get_file_type();
+    if (type === Gio.FileType.REGULAR && MODEL_FILE_RE.test(info.get_name())) {
+        found.push({file, size: info.get_size(),
+            mtime: info.get_attribute_uint64('time::modified')});
+    }
+    if (type !== Gio.FileType.DIRECTORY)
+        return;
+    for (const [child, childInfo] of _visibleChildren(file))
+        _visitModels(child, childInfo, found);
+}
+
+// A folder's non-hidden entries as [file, info] pairs. The enumerator is
+// closed before the caller recurses (GC won't run during this synchronous
+// walk), so a deep tree holds one directory fd at a time, not one per level.
+function _visibleChildren(dir) {
+    let children;
+    try {
+        children = dir.enumerate_children(COLLECT_ATTRS, Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
+    } catch (e) {
+        printerr(`makimiru-pregen: cannot read ${dir.get_path()}: ${e.message}`);
+        return [];
+    }
+    const entries = [];
+    try {
+        for (let info; (info = children.next_file(null));) {
+            if (!info.get_is_hidden())
+                entries.push([children.get_child(info), info]);
+        }
+    } finally {
+        children.close(null);
+    }
+    return entries;
+}
+
+// Model files under the given paths, recursively. Hidden entries inside a
+// folder are skipped. A symlink given as a path is followed (a symlinked
+// folder is still the folder the user picked); symlinks found inside are
+// not (no loops).
+function _collectModels(paths) {
+    const found = [];
+    for (const path of paths) {
+        const file = Gio.File.new_for_commandline_arg(path);
+        try {
+            const info = file.query_info(COLLECT_ATTRS, Gio.FileQueryInfoFlags.NONE, null);
+            _visitModels(file, info, found);
+        } catch (e) {
+            printerr(`makimiru-pregen: cannot read ${path}: ${e.message}`);
+        }
+    }
+    return found;
+}
+
+function _notify(summary, body) {
+    try {
+        Gio.DBus.session.call_sync('org.freedesktop.Notifications',
+            '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'Notify',
+            new GLib.Variant('(susssasa{sv}i)',
+                ['MakiMiru', 0, 'image-x-generic', summary, body, [], {}, -1]),
+            null, Gio.DBusCallFlags.NONE, 5000, null);
+    } catch (e) {
+        printerr(`makimiru-pregen: desktop notification failed: ${e.message}`);
+    }
+}
+
+// Splits found models into ones still to render and a count already handled
+// (cached, previously failed, or recorded as failed now because too large).
+// Overlapping arguments (a folder and its subfolder) list a file twice; it
+// is rendered once.
+function _triage(factory, models, stats) {
+    const todo = [];
+    const seen = new Set();
+    for (const found of models) {
+        const m = {...found, uri: found.file.get_uri()};
+        if (seen.has(m.uri))
+            continue;
+        seen.add(m.uri);
+        if (factory.lookup(m.uri, m.mtime) || factory.has_valid_failed_thumbnail(m.uri, m.mtime)) {
+            stats.cached++;
+            continue;
+        }
+        const reason = _sizeProblem(m.size);
+        if (reason)
+            _recordFailure(factory, m, reason, true, stats);
+        else
+            todo.push(m);
+    }
+    return todo;
+}
+
+// Permanent failures (too large, or contents the page can't use) are
+// recorded the way Files records them, so neither Files nor a later run
+// retries them. Others (timeout, crash, snapshot or save error) may be
+// transient: reported only, so the next run or Files tries again.
+function _recordFailure(factory, model, reason, permanent, stats) {
+    stats.failed++;
+    print(`failed  ${model.file.get_path()}: ${reason}${permanent ? '' : ' (will retry)'}`);
+    if (!permanent)
+        return;
+    try {
+        factory.create_failed_thumbnail(model.uri, model.mtime, null);
+    } catch (e) {
+        printerr(`makimiru-pregen: could not record failure: ${e.message}`);
+    }
+}
+
+function _saveToCache(factory, model, pixbuf, stats) {
+    try {
+        factory.save_thumbnail(pixbuf, model.uri, model.mtime, null);
+        stats.made++;
+        print(`made    ${model.file.get_path()}`);
+    } catch (e) {
+        _recordFailure(factory, model, e.message, false, stats);
+    }
+}
+
+// Renders todo in order on one display. Returns 1, rendering nothing, only
+// when the display can't start.
+function _renderAll(factory, todo, pixels, stats) {
+    return _runRenderLoop(pixels, (renderer, quit) => {
+        const next = (i) => {
+            const m = todo[i];
+            if (!m) {
+                quit(0);
+                return;
+            }
+            renderer.render(m.file, (pixbuf, reason, permanent) => {
+                if (pixbuf)
+                    _saveToCache(factory, m, pixbuf, stats);
+                else
+                    _recordFailure(factory, m, reason, permanent, stats);
+                next(i + 1);
+            });
+        };
+        next(0);
+    });
+}
+
+function _pregen(args) {
+    const opts = _parsePregenArgs(args);
+    if (!opts) {
+        printerr(PREGEN_USAGE);
+        return 2;
+    }
+    _enableQuietMode();
+    imports.gi.versions.GnomeDesktop = '3.0';
+    const GnomeDesktop = imports.gi.GnomeDesktop;
+    const [sizeName, pixels] = PREGEN_SIZES[opts.size];
+    const factory = GnomeDesktop.DesktopThumbnailFactory.new(
+        GnomeDesktop.DesktopThumbnailSize[sizeName]);
+
+    const started = GLib.get_monotonic_time();
+    const stats = {made: 0, cached: 0, failed: 0};
+    const todo = _triage(factory, _collectModels(opts.paths), stats);
+    const code = todo.length ? _renderAll(factory, todo, pixels, stats) : 0;
+    if (code !== 0)
+        stats.failed += todo.length; // no display: none rendered, none recorded
+
+    const secs = ((GLib.get_monotonic_time() - started) / 1e6).toFixed(1);
+    const summary = `${stats.made} new, ${stats.cached} already done, ${stats.failed} failed`;
+    print(`makimiru-pregen: ${summary} (${secs} s)`);
+    if (opts.notify)
+        _notify('3D thumbnails ready', summary);
+    return code;
+}
+
+function main() {
+    const code = ARGV[0] === '--pregen' ? _pregen(ARGV.slice(1)) : _thumbnailOne(ARGV);
+    System.exit(code);
 }
 
 main();

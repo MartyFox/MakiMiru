@@ -60,7 +60,7 @@ podman run --rm --userns=keep-id -v "$REPO:/src:rw" \
     meson compile -C deb-build/sys-build
     meson install -C deb-build/sys-build --destdir /src/deb-build/sys-stage >/dev/null
 
-    meson setup deb-build/previewer-build --prefix="'"$PREVIEWER_PREFIX"'" --libexecdir libexec --reconfigure >/dev/null
+    meson setup deb-build/previewer-build --prefix="'"$PREVIEWER_PREFIX"'" --libexecdir libexec -Dpregen=false --reconfigure >/dev/null
     meson compile -C deb-build/previewer-build
     meson install -C deb-build/previewer-build --destdir /src/deb-build/previewer-stage >/dev/null
 '
@@ -84,10 +84,14 @@ rm -rf "$PKGROOT/usr/share/sushi/gir-1.0" \
        "$PKGROOT/usr/share/metainfo" \
        "$PKGROOT/usr/share/dbus-1"
 rm -rf "$PKGROOT/usr/lib"
-[ -d "$SYS/usr/bin" ] && [ "$(ls -A "$SYS/usr/bin" 2>/dev/null | grep -v '^sushi$')" ] && {
+[ -d "$SYS/usr/bin" ] && [ "$(ls -A "$SYS/usr/bin" 2>/dev/null | grep -v -e '^sushi$' -e '^makimiru-pregen$')" ] && {
     echo "unexpected extra files under pass 1's /usr/bin — check what changed" >&2
     exit 1
 }
+# makimiru-pregen is ours alone (gnome-sushi has no such file), so pass 1's
+# /usr/bin copy ships; /usr/bin/sushi stays excluded.
+mkdir -p "$PKGROOT/usr/bin"
+cp -a "$SYS/usr/bin/makimiru-pregen" "$PKGROOT/usr/bin/"
 
 # --- Pass 2 (/opt/makimiru/previewer) contributions: the entire
 # previewer payload, at its own private, non-colliding prefix. ---

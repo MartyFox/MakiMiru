@@ -46,8 +46,9 @@ podman run --rm -v "$FIX:/fix:Z" docker.io/library/ubuntu:24.04 sh -c '
         imports.gi.versions.EvinceView = \"3.0\";
         imports.gi.versions.Gst = \"1.0\";
         imports.gi.versions.GstTag = \"1.0\";
+        imports.gi.versions.GnomeDesktop = \"3.0\";
         const {Gdk, GdkPixbuf, Gio, GLib, GObject, Gst, GstTag, Gtk, GtkSource,
-               Pango, Soup, WebKit2, EvinceDocument, EvinceView} = imports.gi;
+               Pango, Soup, WebKit2, EvinceDocument, EvinceView, GnomeDesktop} = imports.gi;
         print(\"ok: all GI namespaces import\");
     "
 
@@ -57,5 +58,11 @@ podman run --rm -v "$FIX:/fix:Z" docker.io/library/ubuntu:24.04 sh -c '
         python3 /fix/check-thumbnail-png.py /tmp/$f.png 256
     done
     echo "ok: thumbnails rendered on a machine without gnome-sushi"
+
+    mkdir -p /tmp/models && cp /fix/sphere.stl /fix/cube.3mf /tmp/models/
+    XDG_CACHE_HOME=/tmp/cache timeout 120 makimiru-pregen /tmp/models 2>/tmp/pregen.err |
+        grep -q "2 new, 0 already done, 0 failed" ||
+        { cat /tmp/pregen.err; echo "FAIL: makimiru-pregen failed on a bare install"; exit 1; }
+    echo "ok: makimiru-pregen works with only the declared dependencies"
 '
 echo "PASS: test-deb-clean-install"

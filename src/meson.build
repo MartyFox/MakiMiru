@@ -75,3 +75,21 @@ install_data(
   install_mode: 'rwxr-xr-x',
   install_dir: libexecdir,
 )
+
+# makimiru-pregen: user-facing command for the thumbnailer's batch mode
+# (pre-generates a folder's thumbnails into GNOME's cache).
+pregen_conf = configuration_data()
+pregen_conf.set('libexecdir', libexecdir)
+makimiru_pregen_bin = configure_file(
+  input: 'makimiru-pregen.in',
+  output: 'makimiru-pregen',
+  configuration: pregen_conf,
+)
+
+if get_option('pregen')
+  install_data(
+    makimiru_pregen_bin,
+    install_mode: 'rwxr-xr-x',
+    install_dir: bindir,
+  )
+endif
