@@ -44,7 +44,34 @@ set -eu
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 IMAGE=makimiru-build
-VERSION="${MAKIMIRU_DEB_VERSION:-1.0.0-1}"
+
+# Package version, from git (MAKIMIRU_DEB_VERSION overrides it):
+#   clean checkout of tag makimiru-vX.Y.Z    -> X.Y.Z-1
+#   N commits after it                       -> X.Y.Z+gitN.gSHA-1
+#   uncommitted or untracked changes as well -> ...gSHA.dYYYYMMDDHHMMSS-1
+# Each new build sorts newer to apt, so `apt install` upgrades without
+# --reinstall. The prefix keeps clear of upstream Sushi's own v* tags.
+deb_version() {
+    desc="$(git -C "$REPO" describe --tags --long --match 'makimiru-v[0-9]*' 2>/dev/null)" || {
+        echo "no makimiru-v* tag: tag a release (git tag makimiru-v1.0.0) or set MAKIMIRU_DEB_VERSION" >&2
+        return 1
+    }
+    # desc: makimiru-v1.1.0-3-gd83f9ed
+    sha="${desc##*-g}"
+    rest="${desc%-g*}"
+    count="${rest##*-}"
+    base="${rest%-*}"
+    base="${base#makimiru-v}"
+    dirty=""
+    [ -z "$(git -C "$REPO" status --porcelain)" ] || dirty=".d$(date -u +%Y%m%d%H%M%S)"
+    if [ "$count" = 0 ] && [ -z "$dirty" ]; then
+        echo "$base-1"
+    else
+        echo "$base+git$count.g$sha$dirty-1"
+    fi
+}
+VERSION="${MAKIMIRU_DEB_VERSION:-$(deb_version)}"
+echo "Version: $VERSION"
 PKGROOT="$REPO/deb-build/pkgroot"
 PREVIEWER_PREFIX=/opt/makimiru/previewer
 
@@ -130,6 +157,8 @@ install -m 755 "$REPO/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 755 "$REPO/debian/prerm" "$PKGROOT/DEBIAN/prerm"
 
 # --- Build ---
+# One .deb in deb-build/ at a time: the tests install whichever they find.
+rm -f "$REPO"/deb-build/makimiru_*_amd64.deb
 OUT="$REPO/deb-build/makimiru_${VERSION}_amd64.deb"
 dpkg-deb --build --root-owner-group "$PKGROOT" "$OUT"
 

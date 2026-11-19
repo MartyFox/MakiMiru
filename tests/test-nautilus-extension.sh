@@ -6,11 +6,14 @@
 # command it would run exists. Needs the .deb and python3-nautilus.
 set -eu
 EXT=/usr/share/nautilus-python/extensions/makimiru-nautilus.py
+# The system Python, as Files loads the extension with it (libnautilus-python);
+# a pyenv/brew python3 on PATH has no gi module.
+PY=/usr/bin/python3
 [ -f "$EXT" ] || { echo "SKIP: $EXT not installed (deb mode only)"; exit 0; }
-python3 -c 'import gi; gi.require_version("Nautilus", "4.0")' 2>/dev/null ||
+"$PY" -c 'import gi; gi.require_version("Nautilus", "4.0")' 2>/dev/null ||
     { echo "SKIP: Nautilus 4.0 Python bindings not installed (python3-nautilus)"; exit 0; }
 
-python3 - "$EXT" <<'EOF'
+"$PY" - "$EXT" <<'EOF'
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location('ext', sys.argv[1])
 ext = importlib.util.module_from_spec(spec)

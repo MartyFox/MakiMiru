@@ -26,17 +26,20 @@ Other GNOME versions aren't supported. The previewer is a fork of Sushi 46, and 
 
 ## Install
 
-Build the package (this needs [podman](https://podman.io/); nothing is installed on your machine while building):
+Download the `.deb` from the [latest release](https://github.com/MartyFox/makimiru/releases/latest) and install it:
+
+```sh
+sudo apt install ./makimiru_<version>_amd64.deb
+```
+
+Or build it yourself (this needs [podman](https://podman.io/); nothing is installed on your machine while building), then install it the same way:
 
 ```sh
 scripts/build-deb.sh
+sudo apt install ./deb-build/makimiru_*_amd64.deb
 ```
 
-Then install it:
-
-```sh
-sudo apt install ./deb-build/makimiru_<version>_amd64.deb
-```
+The version comes from git: a release tag `makimiru-v1.1.0` builds `1.1.0-1`, and a build from later commits or uncommitted changes gets a higher version such as `1.1.0+git3.gd83f9ed-1`, so installing a newer build always upgrades.
 
 - **Thumbnails** work straight away for every user.
 - **Spacebar preview** turns on automatically the next time each user logs in. To turn it on in the session you're already in, run:
@@ -153,6 +156,17 @@ tests/run-all.sh dev   # test the ~/.local developer install
 ```
 
 The suite needs a logged-in GNOME session, and it installs and removes packages. **Run it in a disposable VM, not on your everyday machine.** `tests/test-deb-clean-install.sh` also installs the package into a bare Ubuntu 24.04 container, to check that the package's dependency list is complete.
+
+### Releasing
+
+Tag the commit and push the tag:
+
+```sh
+git tag makimiru-v1.1.0
+git push origin makimiru-v1.1.0
+```
+
+The `Release .deb` workflow builds the package, runs `tests/test-deb-clean-install.sh` on it, and publishes it as a GitHub Release. Tags start with `makimiru-v` because the upstream Sushi history already has its own `v*` tags. To build and test a branch without publishing, run the workflow by hand from the Actions tab; the `.deb` is kept as a download on that run.
 
 ## Performance
 
